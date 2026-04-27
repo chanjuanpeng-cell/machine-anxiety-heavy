@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Machine Anxiety — Portfolio</title>
+
+<style>
+body {
+    margin: 0;
+    background: #030303;
+    color: #eaeaea;
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    line-height: 1.6;
+}
+
+.container {
+    max-width: 900px;
+    margin: auto;
+    padding: 60px 20px;
+}
+
+h1 {
+    font-size: 42px;
+    margin-bottom: 10px;
+}
+
+h2 {
+    margin-top: 60px;
+    font-size: 22px;
+    color: #aaa;
+}
+
+p {
+    font-size: 16px;
+    color: #ccc;
+}
+
+ul {
+    color: #ccc;
+    padding-left: 22px;
+}
+
+li {
+    margin: 6px 0;
+}
+
+.meta {
+    color: #888;
+    font-size: 14px;
+    margin-bottom: 40px;
+}
+
+.video {
+    margin-top: 40px;
+}
+
+iframe {
+    width: 100%;
+    height: 500px;
+    border: none;
+}
+
+.links {
+    margin-top: 20px;
+}
+
+a {
+    color: #fff;
+    text-decoration: none;
+    border-bottom: 1px solid #555;
+}
+
+a:hover {
+    border-color: #fff;
+}
+
+.footer {
+    margin-top: 80px;
+    font-size: 13px;
+    color: #666;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>Machine Anxiety</h1>
+<div class="meta">
+2026 — Single-channel video + real-time WebGL system — 54 seconds
+</div>
+
+<p>
+A data-driven moving image in which a private interior is destabilised by historical GBP/CNY exchange-rate fluctuations.
+</p>
+
+<p>
+Machine Anxiety translates macroeconomic volatility into spatial instability. Using exchange-rate data recorded between September 2024 and April 2026, the work drives a LiDAR-scanned model of the artist’s student accommodation.
+</p>
+
+<p>
+As the data shifts, the space trembles, rotates, and gradually loses coherence, revealing how distant financial systems exert pressure on intimate environments.
+</p>
+
+<h2>Video</h2>
+
+<div class="video">
+<iframe src="https://player.vimeo.com/video/1182278340" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>
+</div>
+
+<h2>Live System</h2>
+
+<div class="links">
+<a href="https://machine-anxiety.vercel.app/" target="_blank">
+View real-time version →
+</a>
+</div>
+
+<h2>System Logic</h2>
+
+<p>
+The work operates as a closed computational system where financial data acts as a continuous force rather than visual information.
+</p>
+
+<p>
+Exchange-rate values are mapped to spatial deformation, rotation speed, camera movement, and particle density, producing a behavioural transformation of space rather than a direct visualisation of data.
+</p>
+
+<h2>Technical</h2>
+
+<ul>
+    <li>Custom Three.js / WebGL system</li>
+    <li>Point-cloud environment reconstructed from LiDAR scan (~300k vertices)</li>
+    <li>Historical GBP/CNY exchange-rate dataset structured as JSON</li>
+    <li>Offline frame-by-frame rendering via CCapture.js</li>
+    <li>Final composition and sound editing in Adobe Premiere Pro</li>
+</ul>
+
+<h2>Links</h2>
+
+<p>
+<a href="https://machine-anxiety.vercel.app/" target="_blank">Live system</a><br>
+<a href="https://vimeo.com/1182278340" target="_blank">Video</a><br>
+<a href="https://github.com/chanjuanpeng-cell/machine-anxiety" target="_blank">Code</a>
+</p>
+
+<div class="footer">
+© Peng Chanjuan, 2026
+</div>
+
+</div>
+
+</body>
+</html>

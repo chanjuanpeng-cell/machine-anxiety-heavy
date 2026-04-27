@@ -3,105 +3,80 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Machine Anxiety - Protocol V4 (Decoupled & Refined)</title>
+    <title>Machine Anxiety - Final Edition (Fluid + Audio + AutoRotate)</title>
     <style>
-        body {
-            margin: 0;
-            overflow: hidden;
-            background-color: #030303; 
-            color: #ffffff;
-            font-family: monospace; 
-        }
-
-        #scanlines {
-            position: fixed;
-            top: 0; left: 0; width: 100vw; height: 100vh;
-            background: linear-gradient(
-                to bottom,
-                rgba(255,255,255,0),
-                rgba(255,255,255,0) 50%,
-                rgba(0,0,0,0.1) 50%,
-                rgba(0,0,0,0.1)
-            );
-            background-size: 100% 4px; 
-            pointer-events: none; 
-            z-index: 5;
-            opacity: 0.8;
-        }
-
-        #start-screen {
-            position: fixed;
-            top: 0; left: 0; width: 100vw; height: 100vh;
-            background-color: #000000;
-            z-index: 9999;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            cursor: pointer;
-            transition: opacity 1s ease-out; 
-        }
-
-        #start-text {
-            font-size: 18px;
-            letter-spacing: 4px;
-            color: #555;
-            animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-            0% { color: #222; }
-            50% { color: #888; text-shadow: 0 0 10px rgba(255,255,255,0.2); }
-            100% { color: #222; }
-        }
-
-        #ui-container {
+        body { margin: 0; overflow: hidden; background-color: #030303; color: #ffffff; font-family: monospace; }
+        @keyframes pulse { 0% { color: #222; } 50% { color: #888; text-shadow: 0 0 10px rgba(255,255,255,0.2); } 100% { color: #222; } }
+        #ui-container { position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%); background: rgba(0, 0, 0, 0.42); padding: 15px 25px; border: none; width: 360px; z-index: 10; display: none; backdrop-filter: blur(2px); }
+        .data-row { display: grid; grid-template-columns: 150px 1fr; align-items: baseline; margin: 6px 0; font-size: 12px; letter-spacing: 0.5px; }
+        .label { color: #666; text-transform: uppercase; }
+        .value { color: #cfcfcf; font-weight: normal; text-align: left; }
+        #display-date { font-size: 12px; color: #cfcfcf; letter-spacing: 0.5px; } 
+        .warning { color: #f0f0f0; font-weight: bold; letter-spacing: 0.8px; animation: none; }
+        #intro-overlay {
             position: absolute;
-            bottom: 40px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(0, 0, 0, 0.7); 
-            padding: 15px 25px; 
-            border: 1px solid #333; 
-            text-align: center;
-            min-width: 320px; 
-            z-index: 10;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            background: #000000;
+            color: #f2f2f2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+            cursor: pointer;
+            transition: opacity 900ms ease;
         }
-
-        .data-row { margin: 8px 0; font-size: 14px; letter-spacing: 1px; }
-        .label { color: #666; }
-        .value { color: #eee; font-weight: bold; }
-        #display-date { font-size: 18px; color: #aaa; } 
-        .warning { color: #ff3333; animation: blink 0.5s infinite; }
-
-        @keyframes blink {
-            0% { opacity: 1; }
-            50% { opacity: 0.5; }
-            100% { opacity: 1; }
+        #intro-overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        .intro-text {
+            text-align: center;
+            max-width: 720px;
+            padding: 0 28px;
+        }
+        .intro-title {
+            font-size: clamp(24px, 3vw, 42px);
+            letter-spacing: 3px;
+            font-weight: normal;
+        }
+        .intro-subtitle {
+            margin-top: 16px;
+            color: #8a8a8a;
+            font-size: clamp(11px, 1.2vw, 15px);
+            letter-spacing: 0.8px;
+            line-height: 1.6;
+        }
+        .intro-enter {
+            margin-top: 32px;
+            color: #5f5f5f;
+            font-size: 11px;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
         }
     </style>
 </head>
 <body>
 
-    <div id="scanlines"></div>
-
-    <div id="start-screen">
-        <div id="start-text">CLICK TO INITIALIZE SYSTEM</div>
+    <div id="intro-overlay">
+        <div class="intro-text">
+            <div class="intro-title">MACHINE ANXIETY</div>
+            <div class="intro-subtitle">A private interior destabilised by historical GBP/CNY exchange-rate fluctuations</div>
+            <div class="intro-enter">Click to enter</div>
+        </div>
     </div>
 
     <div id="ui-container">
-        <div class="data-row"><span id="display-date" class="value">SYSTEM STANDBY</span></div>
-        <div class="data-row"><span class="label">GBP/CNY (HISTORICAL): </span><span id="display-rate" class="value">--</span></div>
-        <div class="data-row"><span class="label">SYS_STRESS: </span><span id="display-stress" class="value">--</span></div>
+        <div class="data-row"><span class="label">date</span><span id="display-date" class="value">SYSTEM STANDBY</span></div>
+        <div class="data-row"><span class="label">GBP/CNY</span><span id="display-rate" class="value">--</span></div>
+        <div class="data-row"><span class="label">spatial condition</span><span id="display-stress" class="value">--</span></div>
     </div>
 
     <script type="importmap">
-        {
-            "imports": {
-                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-            }
-        }
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
     </script>
+    <script src="https://unpkg.com/ccapture.js@1.1.0/build/CCapture.all.min.js"></script>
 
     <script type="module">
         import * as THREE from 'three';
@@ -113,9 +88,27 @@
         import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
         import { RGBShiftShader } from 'three/addons/shaders/RGBShiftShader.js';
 
-        let audioCtx, oscillator, gainNode, filterNode;
+        // === 离线渲染全局变量 ===
+        let capturer = null;
+        let isExportMode = false;
+        let exportFrameCount = 0;
+        let virtualTime = 0; 
+
+        // === 完整的音频系统变量 ===
+        let audioCtx, oscillator, gainNode, filterNode, machinePanner;
+        let roomNoiseSource, roomNoiseGain, roomFilter, roomPanner;
+        let eventNoiseSource, eventNoiseGain, eventFilter, eventPanner;
+        let subOscillator, subGainNode;
+        let airNoiseSource, airNoiseGain, airFilter, airPanner;
+        let criticalEventCooldown = 0;
         let isAudioInitialized = false;
+
         let systemStarted = false;
+        let motionPaused = false;
+        let lastFrameTime = performance.now();
+        const TITLE_HOLD_MS = 2200;
+        const TITLE_FADE_MS = 1400;
+        let titleSequenceStart = 0;
 
         const scene = new THREE.Scene();
         scene.fog = new THREE.FogExp2(0x030303, 0.04); 
@@ -123,224 +116,577 @@
         camera.position.set(0, 0.2, 4.5); 
 
         const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
-        renderer.setPixelRatio(window.devicePixelRatio); 
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); 
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
+
+        function drawCinematicTitleOverlay(ctx, width, height, nowMs) {
+            if (!titleSequenceStart) return 1;
+            const elapsed = nowMs - titleSequenceStart;
+            if (elapsed >= TITLE_HOLD_MS + TITLE_FADE_MS) return;
+            const alpha = elapsed <= TITLE_HOLD_MS ? 1 : 1 - ((elapsed - TITLE_HOLD_MS) / TITLE_FADE_MS);
+            if (alpha <= 0.001) return;
+
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, width, height);
+
+            const pulse = 0.82 + 0.18 * (0.5 + 0.5 * Math.sin(nowMs * 0.0022));
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillStyle = `rgba(242,242,242,${pulse})`;
+            ctx.font = `${Math.round(width * 0.028)}px monospace`;
+            ctx.fillText('MACHINE ANXIETY', width * 0.5, height * 0.47);
+
+            ctx.fillStyle = `rgba(189,189,189,${0.92 * pulse})`;
+            ctx.font = `${Math.round(width * 0.014)}px monospace`;
+            ctx.fillText('A private interior destabilised by', width * 0.5, height * 0.535);
+            ctx.fillText('GBP/CNY exchange-rate fluctuations', width * 0.5, height * 0.575);
+            ctx.restore();
+        }
 
         const controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
         controls.target.set(0, 0.2, 0); 
-        controls.minPolarAngle = 0;         
-        controls.maxPolarAngle = Math.PI;   
-        controls.autoRotate = true;         
-        controls.autoRotateSpeed = 0.3;     
+        // 🚨【关键修改1】调整自转速度为经典数值
+        controls.autoRotateSpeed = -1.25;
 
         const composer = new EffectComposer(renderer);
-        const renderPass = new RenderPass(scene, camera);
-        composer.addPass(renderPass);
-
-        // 【改良点】：提高泛光阈值，这样我们可以使用亮色模型而不过曝
-        const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.6, 0.4, 0.6);
+        composer.addPass(new RenderPass(scene, camera));
+        const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.45, 0.28, 0.78);
         composer.addPass(bloomPass);
-
         const rgbShiftPass = new ShaderPass(RGBShiftShader);
-        rgbShiftPass.uniforms['amount'].value = 0.001; 
+        rgbShiftPass.uniforms['amount'].value = 0.0002; 
         composer.addPass(rgbShiftPass);
 
-        const circleCanvas = document.createElement('canvas');
-        circleCanvas.width = 32;
-        circleCanvas.height = 32;
-        const context = circleCanvas.getContext('2d');
-        context.beginPath();
-        context.arc(16, 16, 14, 0, Math.PI * 2);
-        context.fillStyle = "white";
-        context.fill();
+        const PUSH_START_CAMERA = new THREE.Vector3(-0.599, 0.323, 2.251);
+        const PUSH_START_TARGET = new THREE.Vector3(0.125, 0.225, -0.06);
+        let shotStartTime = 0;
+
+        const circleCanvas = document.createElement('canvas'); circleCanvas.width = 32; circleCanvas.height = 32;
+        const context = circleCanvas.getContext('2d'); context.beginPath(); context.arc(16, 16, 14, 0, Math.PI * 2); context.fillStyle = "white"; context.fill();
         const circleTexture = new THREE.CanvasTexture(circleCanvas);
 
         let points; 
-        const loader = new PLYLoader();
-
-        loader.load('room_scan_test2.ply', function (geometry) {
+        new PLYLoader().load('room_scan_test2.ply', function (geometry) {
             const basePositions = new Float32Array(geometry.attributes.position.array);
             geometry.setAttribute('basePosition', new THREE.BufferAttribute(basePositions, 3));
 
-            const material = new THREE.PointsMaterial({ 
-                // 【改良点】：绝对高亮解耦，恢复最初的高级清晰感
-                color: 0xcccccc,        
-                size: 0.008,            
-                map: circleTexture,     
-                alphaTest: 0.1,         
-                transparent: true,
-                opacity: 0.85,          
-                depthWrite: false       
+            const material = new THREE.PointsMaterial({
+                color: 0xd0d0d0, size: 0.0075, map: circleTexture, alphaTest: 0.12, transparent: true, opacity: 0.82, depthWrite: false
             });
-
             points = new THREE.Points(geometry, material);
-            points.rotation.x = Math.PI / 2; 
-            scene.add(points);
+            geometry.computeBoundingBox(); const center = new THREE.Vector3(); geometry.boundingBox.getCenter(center);
+            points.position.set(-center.x, -center.y, -center.z); scene.add(points);
+            camera.position.copy(PUSH_START_CAMERA);
+            controls.target.copy(PUSH_START_TARGET);
+            controls.update();
         });
 
         let exchangeData = [];
         let currentDayIndex = 0;
         let lastDayChangeTime = 0;
-        const dayDuration = 500; 
-
-        let targetAnxiety = 0;  
-        let currentAnxiety = 0; 
+        let dayDuration = 1600; 
+        let targetAnxiety = 0;
+        let currentAnxiety = 0;
+        let deformationDrive = 0;
+        let targetDeformationDrive = 0;
+        let deformationImpulse = 0;
+        let previousRateForDeformation = null;
         
-        const BASELINE_RATE = 9.00; 
-        const MULTIPLIER = 1.2;  
+        // Visual calibration restored from the simulated-data version.
+        // This makes the real exchange-rate data produce a stronger spatial response.
+        const BASELINE_RATE = 9.00;
+        const MULTIPLIER = 1.2;
+        const SYSTEM_DELAY_MS = 2500;
+        const SHORT_HOLD_MS = 400;     
+        const FINAL_HOLD_MS = 3000;    
+        const END_FADE_DURATION_MS = 3500;
+        const BASE_FOG_DENSITY = 0.04;
+
+        // === Cinematic cycle control ===
+        // One full data cycle = one complete 360-degree orbit.
+        // The final phase keeps the same viewing angle but slowly pulls the room away.
+        const CYCLE_DURATION_MS = 52000;
+        const END_PULL_START = 0.74;
+        const LOOP_FADE_START = 0.90;
+        const LOOP_RESET_AT = 0.995;
+        const START_DISTANCE = 4.65;
+        const MIN_VIEW_DISTANCE = 2.65;
+        const END_DISTANCE = 5.75;
+        const END_SIDE_OFFSET = 0.75;
+        const END_VERTICAL_OFFSET = 0.18;
+        const BREATH_AMOUNT = 0.06;
+        const DATA_PUSH_AMOUNT = 0.42;
+        const DATA_PULL_AMOUNT = 0.32;
+        const START_ORBIT_ANGLE = Math.atan2(PUSH_START_CAMERA.x - PUSH_START_TARGET.x, PUSH_START_CAMERA.z - PUSH_START_TARGET.z);
+        const START_CAMERA_HEIGHT = PUSH_START_CAMERA.y;
+        let cinematicDataPush = 0;
+        let dataDistancePulse = 0;
+        let targetDataDistancePulse = 0;
+        let previousRateForCamera = null;
+        let pointFrameSkip = 0;
+        const POINT_UPDATE_INTERVAL = 1;
+        const SMOOTHED_CAMERA_POSITION = new THREE.Vector3();
+        const SMOOTHED_CAMERA_TARGET = new THREE.Vector3();
+        let cameraSmoothingReady = false;
+
+        function getDayDurationForAnxiety(a) {
+            if (a > 0.8) return 2100;
+            if (a > 0.6) return 1600;
+            if (a > 0.3) return 1100;
+            return 700;
+        }
+
+        function easeInOutSine(t) {
+            return -(Math.cos(Math.PI * THREE.MathUtils.clamp(t, 0, 1)) - 1) / 2;
+        }
+
+        function getCycleProgress(now) {
+            if (!systemStarted || !shotStartTime) return 0;
+            const elapsed = Math.max(0, now - shotStartTime - SYSTEM_DELAY_MS);
+            return THREE.MathUtils.clamp(elapsed / CYCLE_DURATION_MS, 0, 1);
+        }
+
+        function restartCycle(now) {
+            currentDayIndex = 0;
+            lastDayChangeTime = now;
+            shotStartTime = now;
+            targetAnxiety = 0;
+            currentAnxiety = 0;
+            deformationDrive = 0;
+            targetDeformationDrive = 0;
+            deformationImpulse = 0;
+            cinematicDataPush = 0;
+            dataDistancePulse = 0;
+            targetDataDistancePulse = 0;
+            previousRateForCamera = null;
+            previousRateForDeformation = null;
+            pointFrameSkip = 0;
+            cameraSmoothingReady = false;
+
+            if (points && points.geometry && points.geometry.attributes.basePosition) {
+                const positions = points.geometry.attributes.position;
+                const bases = points.geometry.attributes.basePosition;
+                for (let i = 0; i < positions.count; i++) {
+                    positions.setXYZ(i, bases.getX(i), bases.getY(i), bases.getZ(i));
+                }
+                positions.needsUpdate = true;
+            }
+
+            if (points && points.material) {
+                points.material.opacity = 0.82;
+                points.material.size = 0.0075;
+            }
+
+            if (bloomPass) bloomPass.strength = 0.45;
+            if (rgbShiftPass && rgbShiftPass.uniforms && rgbShiftPass.uniforms['amount']) rgbShiftPass.uniforms['amount'].value = 0.0002;
+            if (scene && scene.fog) scene.fog.density = 0.04;
+        }
+
+        function getDataIndexFromProgress(progress) {
+            if (!exchangeData.length) return 0;
+            return Math.min(exchangeData.length - 1, Math.floor(progress * exchangeData.length));
+        }
 
         const uiDate = document.getElementById('display-date');
         const uiRate = document.getElementById('display-rate');
         const uiStress = document.getElementById('display-stress');
 
-        fetch('chronicle_data.json')
-            .then(response => response.json())
-            .then(data => {
-                exchangeData = data;
-            });
+        fetch('chronicle_data.json').then(response => response.json()).then(data => { exchangeData = data; });
 
-        document.getElementById('start-screen').addEventListener('click', function() {
-            if (systemStarted) return;
-            this.style.opacity = '0';
-            setTimeout(() => { this.style.display = 'none'; }, 1000);
-            
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            oscillator = audioCtx.createOscillator();
-            oscillator.type = 'sawtooth'; 
-            filterNode = audioCtx.createBiquadFilter();
-            filterNode.type = 'lowpass';
-            gainNode = audioCtx.createGain();
-            gainNode.gain.value = 0; 
-            
-            oscillator.connect(filterNode);
-            filterNode.connect(gainNode);
-            gainNode.connect(audioCtx.destination);
-            
-            oscillator.start();
-            isAudioInitialized = true;
+        function resetSystemState() {
+            currentDayIndex = 0;
+            lastDayChangeTime = virtualTime || Date.now();
+            shotStartTime = lastDayChangeTime;
+            dayDuration = 1600;
+            targetAnxiety = 0; currentAnxiety = 0;
+            deformationDrive = 0;
+            targetDeformationDrive = 0;
+            deformationImpulse = 0;
+            cinematicDataPush = 0;
+            dataDistancePulse = 0;
+            targetDataDistancePulse = 0;
+            previousRateForCamera = null;
+            previousRateForDeformation = null;
+            pointFrameSkip = 0;
+            cameraSmoothingReady = false;
+            titleSequenceStart = virtualTime || Date.now();
+            camera.position.copy(PUSH_START_CAMERA);
+            controls.target.copy(PUSH_START_TARGET);
+            // Restore classic auto-rotate state and speed
+            controls.autoRotate = true;
+            controls.autoRotateSpeed = -1.25;
+        }
+
+        function startSystem() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (!isAudioInitialized) {
+                oscillator = audioCtx.createOscillator();
+                oscillator.type = 'sawtooth';
+                subOscillator = audioCtx.createOscillator();
+                subOscillator.type = 'sine';
+
+                filterNode = audioCtx.createBiquadFilter();
+                filterNode.type = 'lowpass';
+                gainNode = audioCtx.createGain();
+                gainNode.gain.value = 0;
+                machinePanner = audioCtx.createStereoPanner();
+                machinePanner.pan.value = 0;
+
+                subGainNode = audioCtx.createGain();
+                subGainNode.gain.value = 0;
+                
+                oscillator.connect(filterNode);
+                filterNode.connect(gainNode);
+                gainNode.connect(machinePanner);
+                machinePanner.connect(audioCtx.destination);
+                subOscillator.connect(subGainNode);
+                subGainNode.connect(machinePanner);
+
+                // room ambient noise layer
+                const roomNoiseBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 2, audioCtx.sampleRate);
+                const roomNoiseData = roomNoiseBuffer.getChannelData(0);
+                for (let i = 0; i < roomNoiseData.length; i++) { roomNoiseData[i] = (Math.random() * 2 - 1) * 0.03; }
+                roomNoiseSource = audioCtx.createBufferSource();
+                roomNoiseSource.buffer = roomNoiseBuffer; roomNoiseSource.loop = true;
+                roomNoiseGain = audioCtx.createGain(); roomNoiseGain.gain.value = 0.014;
+                roomFilter = audioCtx.createBiquadFilter(); roomFilter.type = 'bandpass'; roomFilter.frequency.value = 420; roomFilter.Q.value = 0.8;
+                roomPanner = audioCtx.createStereoPanner(); roomPanner.pan.value = 0;
+                roomNoiseSource.connect(roomFilter); roomFilter.connect(roomNoiseGain); roomNoiseGain.connect(roomPanner); roomPanner.connect(audioCtx.destination);
+                roomNoiseSource.start();
+
+                // critical-event noise layer
+                const eventNoiseBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 1, audioCtx.sampleRate);
+                const eventNoiseData = eventNoiseBuffer.getChannelData(0);
+                for (let i = 0; i < eventNoiseData.length; i++) { eventNoiseData[i] = (Math.random() * 2 - 1) * 0.08; }
+                eventNoiseSource = audioCtx.createBufferSource(); eventNoiseSource.buffer = eventNoiseBuffer; eventNoiseSource.loop = true;
+                eventFilter = audioCtx.createBiquadFilter(); eventFilter.type = 'bandpass'; eventFilter.frequency.value = 1800; eventFilter.Q.value = 1.2;
+                eventNoiseGain = audioCtx.createGain(); eventNoiseGain.gain.value = 0;
+                eventPanner = audioCtx.createStereoPanner(); eventPanner.pan.value = 0;
+                eventNoiseSource.connect(eventFilter); eventFilter.connect(eventNoiseGain); eventNoiseGain.connect(eventPanner); eventPanner.connect(audioCtx.destination);
+                eventNoiseSource.start();
+
+                // airy room layer
+                const airNoiseBuffer = audioCtx.createBuffer(1, audioCtx.sampleRate * 2, audioCtx.sampleRate);
+                const airNoiseData = airNoiseBuffer.getChannelData(0);
+                for (let i = 0; i < airNoiseData.length; i++) { airNoiseData[i] = (Math.random() * 2 - 1) * 0.02; }
+                airNoiseSource = audioCtx.createBufferSource(); airNoiseSource.buffer = airNoiseBuffer; airNoiseSource.loop = true;
+                airFilter = audioCtx.createBiquadFilter(); airFilter.type = 'highpass'; airFilter.frequency.value = 1800;
+                airNoiseGain = audioCtx.createGain(); airNoiseGain.gain.value = 0.0;
+                airPanner = audioCtx.createStereoPanner(); airPanner.pan.value = 0;
+                airNoiseSource.connect(airFilter); airFilter.connect(airNoiseGain); airNoiseGain.connect(airPanner); airPanner.connect(audioCtx.destination);
+                airNoiseSource.start();
+                
+                oscillator.start();
+                subOscillator.start();
+                isAudioInitialized = true;
+            }
+
+            if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+            resetSystemState();
             systemStarted = true;
-            lastDayChangeTime = Date.now();
+
+            if (gainNode) gainNode.gain.setValueAtTime(0.06, audioCtx.currentTime);
+            if (roomNoiseGain) roomNoiseGain.gain.setValueAtTime(0.048, audioCtx.currentTime);
+        }
+
+        const introOverlay = document.getElementById('intro-overlay');
+        introOverlay.addEventListener('click', () => {
+            if (!systemStarted) startSystem();
+            document.getElementById('ui-container').style.display = 'block';
+            introOverlay.classList.add('hidden');
+            setTimeout(() => { introOverlay.style.display = 'none'; }, 950);
+        }, { once: true });
+
+        // === K 键离线渲染逻辑 (保持 JPG 高清导出) ===
+        window.addEventListener('keydown', (event) => {
+            if (event.key.toLowerCase() === 'k') {
+                if (!isExportMode) {
+                    // High-resolution JPG export for PR compositing.
+                    // 2880x1620 keeps the same 16:9 ratio but gives sharper frames than 1920x1080.
+                    isExportMode = true;
+                    exportFrameCount = 0;
+                    virtualTime = Date.now(); 
+                    renderer.setPixelRatio(1);
+                    renderer.setSize(2880, 1620, false);
+                    composer.setSize(2880, 1620);
+                    camera.aspect = 2880 / 1620;
+                    camera.updateProjectionMatrix();
+                    capturer = new CCapture({
+                        format: 'jpg',
+                        framerate: 60,
+                        quality: 100,
+                        name: 'Machine_Anxiety_FinalFlow_HQ'
+                    });
+                    document.getElementById('ui-container').style.display = 'none';
+                    lastDayChangeTime = virtualTime;
+                    shotStartTime = virtualTime;
+                    currentAnxiety = 0;
+                    targetAnxiety = 0;
+                    deformationDrive = 0;
+                    targetDeformationDrive = 0;
+                    deformationImpulse = 0;
+                    cinematicDataPush = 0;
+                    dataDistancePulse = 0;
+                    targetDataDistancePulse = 0;
+                    previousRateForCamera = null;
+                    previousRateForDeformation = null;
+                    pointFrameSkip = 0;
+                    cameraSmoothingReady = false;
+                    cameraSmoothingReady = false;
+                    // Restore classic auto-rotate state and speed for export
+                    controls.autoRotate = true;
+                    controls.autoRotateSpeed = -1.25;
+                    capturer.start();
+                    console.log("PRODUCTION: 1620P FLUID EXPORT STARTED");
+                } else {
+                    capturer.stop();
+                    capturer.save();
+                    isExportMode = false;
+                    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+                    renderer.setSize(window.innerWidth, window.innerHeight);
+                    composer.setSize(window.innerWidth, window.innerHeight);
+                    camera.aspect = window.innerWidth / window.innerHeight;
+                    camera.updateProjectionMatrix();
+                    document.getElementById('ui-container').style.display = 'block';
+                    console.log("PRODUCTION: EXPORT FINISHED");
+                }
+            }
         });
 
         function animate() {
             requestAnimationFrame(animate);
+
+            if (isExportMode) {
+                virtualTime += (1000 / 60);
+            } else {
+                virtualTime = Date.now();
+            }
+            const now = virtualTime;
+            const dtSec = isExportMode ? (1/60) : Math.min(0.05, (performance.now() - lastFrameTime) / 1000);
+            lastFrameTime = performance.now();
+            // ==========================================
+            // 🎬 Classic orbit-controls camera relation restored
+            // ==========================================
+            // The older version felt better because OrbitControls handled the angle,
+            // while anxiety only changed the camera distance along the same viewing line.
+            // This keeps the camera-model relationship more physical and less mechanical.
+
+            // Classic breathing dolly: distant view at rest, closer view under pressure.
+            const cycleProgress = getCycleProgress(now);
+            if (systemStarted && cycleProgress >= LOOP_RESET_AT) {
+                restartCycle(now);
+            }
+            const activeCycleProgress = getCycleProgress(now);
+            const endPullProgress = activeCycleProgress <= END_PULL_START
+                ? 0
+                : easeInOutSine(THREE.MathUtils.clamp((activeCycleProgress - END_PULL_START) / (LOOP_RESET_AT - END_PULL_START), 0, 1));
+            const loopFadeProgress = activeCycleProgress <= LOOP_FADE_START
+                ? 0
+                : easeInOutSine(THREE.MathUtils.clamp((activeCycleProgress - LOOP_FADE_START) / (LOOP_RESET_AT - LOOP_FADE_START), 0, 1));
+
+            // Camera-model relationship restored from the simulated-data version.
+            // The camera keeps orbiting around a stable target, while anxiety pushes the view closer.
+            const breathDrift = Math.sin(now * 0.0005) * 0.6;
+            const anxietyPush = currentAnxiety * 2.3;
+            const targetDistance = 4.8 - anxietyPush + breathDrift;
+
+            const offset = camera.position.clone().sub(controls.target);
+            if (offset.length() > 0.1) {
+                const currentDist = offset.length();
+                const newDist = currentDist + (targetDistance - currentDist) * 0.02;
+                offset.setLength(Math.max(MIN_VIEW_DISTANCE, newDist));
+                camera.position.copy(controls.target.clone().add(offset));
+            }
+
+            // Keep the model as the visual anchor. Do not drift the target away during the real-data cycle.
+            controls.target.lerp(PUSH_START_TARGET, 0.035);
+
+            controls.autoRotate = true;
+            controls.autoRotateSpeed = -1.25 - (currentAnxiety * 4.0);
             controls.update();
 
             if (systemStarted && exchangeData.length > 0) {
-                const now = Date.now();
-                if (now - lastDayChangeTime > dayDuration) {
-                    currentDayIndex = (currentDayIndex + 1) % exchangeData.length; 
-                    lastDayChangeTime = now;
+                const systemElapsed = shotStartTime ? (now - shotStartTime) : 0;
+
+                if (systemElapsed >= SYSTEM_DELAY_MS) {
+                    const progressIndex = getDataIndexFromProgress(activeCycleProgress);
+                    if (progressIndex !== currentDayIndex) {
+                        currentDayIndex = progressIndex;
+                        lastDayChangeTime = now;
+                    }
+
+                    const activeData = exchangeData[currentDayIndex];
+                    let rawAnxiety = Math.max(0, activeData.rate - BASELINE_RATE) * MULTIPLIER;
+                    targetAnxiety = Math.max(0, Math.min(1, rawAnxiety));
+
+                    // Classic behaviour restored: the room responds to the continuous anxiety level.
+                    // The updated dataset still drives the work, but deformation is no longer split into competing impulse systems.
+                    let rateMovement = 0;
+                    if (previousRateForDeformation !== null) {
+                        rateMovement = Math.abs(activeData.rate - previousRateForDeformation);
+                    }
+                    targetDataDistancePulse = THREE.MathUtils.clamp(rateMovement * 1.8 + targetAnxiety * 0.10, 0, 0.32);
+                    previousRateForDeformation = activeData.rate;
+
+                    // Keep the real-data anxiety signal visually strong through the full cycle.
+                    // The simulated-data version felt stronger because it did not damp the model before the ending.
                 }
 
-                const currentData = exchangeData[currentDayIndex];
-                const liveRate = currentData.rate;
-                
-                let rawAnxiety = Math.max(0, liveRate - BASELINE_RATE) * MULTIPLIER;
-                targetAnxiety = Math.max(0, Math.min(1, rawAnxiety));
-                
-                uiDate.innerText = currentData.date;
-                uiRate.innerText = "£1 = ¥" + liveRate.toFixed(2);
-                
-                let stressPercent = (targetAnxiety * 100).toFixed(0) + "%";
-                if (targetAnxiety > 0.8) {
-                    uiStress.innerHTML = `<span class="warning">${stressPercent} (CRITICAL)</span>`;
-                } else if (targetAnxiety === 0) {
-                    uiStress.innerText = "SAFE ZONE";
-                } else {
-                    uiStress.innerText = stressPercent;
+                const displayData = exchangeData[currentDayIndex];
+                uiDate.innerText = displayData.date;
+                uiRate.innerText = "£1 = ¥" + displayData.rate.toFixed(2);
+            }
+
+            if (!motionPaused) {
+                currentAnxiety += (targetAnxiety - currentAnxiety) * (targetAnxiety > currentAnxiety ? 0.03 : 0.01);
+            }
+
+            if (currentAnxiety > 0.8) uiStress.innerHTML = `<span class="warning">COMPROMISED</span>`;
+            else if (currentAnxiety > 0.6) uiStress.innerText = "UNSTABLE";
+            else if (currentAnxiety > 0.2) uiStress.innerText = "REDUCED";
+            else uiStress.innerText = "NOMINAL";
+
+            // 🚨【关键修改4】彻底删除了原有的 "camera.position.lerpVectors" 强制锁死推进代码
+            // 现在摄影机的移动权力 100% 交还给了自转控制器 OrbitControls
+
+            const glitchMax = 0.002;
+            const a = Math.max(0, Math.min(1, currentAnxiety));
+            let endFade = 0;
+            if (systemStarted && exchangeData.length > 0) {
+                // Lighter ending fade: keeps the point-cloud body present and less washed out.
+                endFade = loopFadeProgress;
+            }
+
+            if (isAudioInitialized && !motionPaused && !isExportMode) {
+                const fadeGain = 1 - endFade;
+                const collapseThreshold = 0.72;
+                const collapseDrive = currentAnxiety > collapseThreshold ? (currentAnxiety - collapseThreshold) / (1 - collapseThreshold) : 0;
+
+                const targetVolume = (0.014 + currentAnxiety * 0.078 + collapseDrive * 0.09) * fadeGain;
+                gainNode.gain.setTargetAtTime(targetVolume, audioCtx.currentTime, 0.10);
+
+                const targetFilter = (140 + currentAnxiety * 700 + collapseDrive * 500 + 80) * fadeGain;
+                filterNode.frequency.setTargetAtTime(targetFilter, audioCtx.currentTime, 0.10);
+
+                const targetPitch = 38 + currentAnxiety * 6 + collapseDrive * 7;
+                oscillator.frequency.setTargetAtTime(targetPitch, audioCtx.currentTime, 0.08);
+
+                if (subOscillator && subGainNode) {
+                    const subPitch = 27 + currentAnxiety * 2.5 + collapseDrive * 4;
+                    const subVolume = (0.014 + currentAnxiety * 0.03 + collapseDrive * 0.036) * fadeGain;
+                    subOscillator.frequency.setTargetAtTime(subPitch, audioCtx.currentTime, 0.12);
+                    subGainNode.gain.setTargetAtTime(subVolume, audioCtx.currentTime, 0.14);
+                }
+
+                const roomNoiseTarget = (0.036 + currentAnxiety * 0.028 + collapseDrive * 0.038 + 0.012) * fadeGain;
+                roomNoiseGain.gain.setTargetAtTime(roomNoiseTarget, audioCtx.currentTime, 0.16);
+
+                const nowSec = audioCtx.currentTime;
+                if (currentAnxiety > 0.80 && nowSec > criticalEventCooldown && endFade < 0.7) {
+                    const burst = (0.006 + collapseDrive * 0.022 + Math.random() * 0.010) * fadeGain;
+                    const burstPan = THREE.MathUtils.clamp((Math.random() * 2 - 1) * 0.95, -1, 1);
+                    eventFilter.frequency.setValueAtTime(600 + Math.random() * 1600, nowSec);
+                    if (eventPanner) eventPanner.pan.setValueAtTime(burstPan, nowSec);
+                    eventNoiseGain.gain.cancelScheduledValues(nowSec);
+                    eventNoiseGain.gain.setValueAtTime(0, nowSec);
+                    eventNoiseGain.gain.linearRampToValueAtTime(burst, nowSec + 0.015);
+                    eventNoiseGain.gain.exponentialRampToValueAtTime(0.0001, nowSec + 0.24);
+                    criticalEventCooldown = nowSec + 0.24 + Math.random() * 0.34;
                 }
             }
 
-            currentAnxiety += (targetAnxiety - currentAnxiety) * 0.02;
+            let glitchDrive = 0;
+            if (a > 0.7) { const t = (a - 0.7) / 0.3; glitchDrive = t * t; }
+            const rgbAmount = glitchMax * glitchDrive;
 
-            if (isAudioInitialized) {
-                const targetVolume = 0.02 + (currentAnxiety * 0.23);
-                gainNode.gain.setTargetAtTime(targetVolume, audioCtx.currentTime, 0.1);
-                const targetFilter = 200 + (currentAnxiety * 2800);
-                filterNode.frequency.setTargetAtTime(targetFilter, audioCtx.currentTime, 0.1);
+            // Keep the final exported JPG frames visually denser and sharper.
+            bloomPass.strength = 0.45 * (1 - endFade * 0.85);
+            rgbShiftPass.uniforms['amount'].value = rgbAmount * (1 - endFade * 0.7);
+            scene.fog.density = 0.04 + (BASE_FOG_DENSITY * 1.4 * endFade);
 
-                let targetPitch = 55 + (currentAnxiety * 20); 
-                if (currentAnxiety > 0.8) { 
-                    targetPitch += (Math.random() - 0.5) * 50; 
-                }
-                oscillator.frequency.setTargetAtTime(targetPitch, audioCtx.currentTime, 0.05);
+            if (points && points.material) {
+                points.material.size = 0.0075 * (1 - endFade * 0.08);
+                points.material.opacity = 0.82 * (1 - endFade * 0.22);
             }
-
-            bloomPass.strength = 0.2 + (currentAnxiety * 0.8); 
-            rgbShiftPass.uniforms['amount'].value = currentAnxiety * currentAnxiety * 0.015;
-            if(currentAnxiety > 0.5) {
-                rgbShiftPass.uniforms['angle'].value = Math.random() * Math.PI * 2;
-            }
-
-            if (points && points.geometry) {
+            pointFrameSkip = (pointFrameSkip + 1) % POINT_UPDATE_INTERVAL;
+            if (points && points.geometry && points.geometry.attributes.basePosition && !motionPaused && pointFrameSkip === 0) {
                 const positions = points.geometry.attributes.position;
                 const bases = points.geometry.attributes.basePosition;
                 const count = positions.count;
-                const time = Date.now() * 0.0015; 
+                const time = now * 0.00115;
 
-                // 【核心改良】：双段映射风化系统
-                let finalInstability = 0;
-                if (currentAnxiety <= 0.6) {
-                    // 平滑区 (0-60%)：极小的基数，保证物体绝对清晰，只有微风抖动
-                    finalInstability = (currentAnxiety / 0.6) * 0.015; 
-                } else {
-                    // 崩解区 (60%-100%)：平滑过渡后，指数级拉扯
-                    let overage = (currentAnxiety - 0.6) / 0.4; // 换算成 0到1的比例
-                    finalInstability = 0.015 + (overage * overage) * 0.135;
-                }
+                // Classic deformation model restored from the earlier version.
+                // This is simpler and more continuous, which gives the point cloud a more natural organic movement.
+                const visualStress = currentAnxiety;
+                let finalInstability = visualStress <= 0.55 ? (visualStress / 0.55) * 0.0065 : 0.0065 + Math.pow((visualStress - 0.55) / 0.45, 2) * 0.095;
+                const collapseDrive = visualStress > 0.72 ? (visualStress - 0.72) / 0.28 : 0;
 
                 for (let i = 0; i < count; i++) {
-                    const weight = Math.abs(Math.sin(i * 12.9898)); 
-                    const jitterX = (Math.random() - 0.5) * finalInstability * 0.02;
-                    const jitterY = (Math.random() - 0.5) * finalInstability * 0.02;
-                    const jitterZ = (Math.random() - 0.5) * finalInstability * 0.02;
+                    const bx = bases.getX(i), by = bases.getY(i), bz = bases.getZ(i);
+                    const px = positions.getX(i), py = positions.getY(i), pz = positions.getZ(i);
 
-                    const windX = finalInstability * weight * 2.0 * (Math.sin(time + bases.getY(i) * 5) + 1); 
-                    const windY = finalInstability * weight * 0.3 * (Math.sin(time * 1.2 + bases.getX(i) * 4)); 
-                    const windZ = finalInstability * weight * 1.5 * (Math.cos(time + bases.getY(i) * 3) + 1); 
+                    const dist = Math.sqrt(bx * bx + by * by + bz * bz);
+                    const edgeWeight = Math.min(1, (1.0 - Math.exp(-dist * 1.45)) * 1.35);
 
-                    positions.setXYZ(
-                        i, 
-                        bases.getX(i) + jitterX + windX, 
-                        bases.getY(i) + jitterY + windY, 
-                        bases.getZ(i) + jitterZ + windZ
-                    );
+                    const fieldA = Math.sin(bx * 2.9 + time * 1.20) * Math.cos(by * 2.4 + time * 0.95);
+                    const fieldB = Math.cos(bz * 2.7 - time * 1.08) * Math.sin(by * 2.1 + time * 0.84);
+                    const fieldC = Math.sin((bx + bz) * 2.0 + time * 0.76);
+
+                    const radialLen = Math.max(0.0001, dist);
+                    const radialX = bx / radialLen, radialY = by / radialLen, radialZ = bz / radialLen;
+
+                    const baseOutward = finalInstability * edgeWeight * 1.35;
+                    const baseFlow = finalInstability * (0.55 + edgeWeight * 1.05);
+
+                    let targetX = bx + radialX * baseOutward + fieldA * baseFlow * 0.90 + fieldC * baseFlow * 0.30;
+                    let targetY = by + radialY * baseOutward * 0.50 + fieldB * baseFlow * 0.40;
+                    let targetZ = bz + radialZ * baseOutward + fieldB * baseFlow * 0.74 + fieldC * baseFlow * 0.26;
+
+                    if (collapseDrive > 0) {
+                        const isDetached = Math.abs(Math.sin(i * 91.173 + bx * 3.1 + bz * 2.7)) > (0.82 - collapseDrive * 0.34 - edgeWeight * 0.18);
+                        if (isDetached) {
+                            const burst = collapseDrive * collapseDrive * (0.55 + edgeWeight * 1.35);
+                            targetX += radialX * burst * 2.2 + fieldA * burst * 0.8;
+                            targetY += radialY * burst * 0.9 + fieldB * burst * 0.55;
+                            targetZ += radialZ * burst * 2.0 + fieldC * burst * 0.7;
+                            const driftLerp = 0.085 + collapseDrive * 0.05;
+                            positions.setXYZ(i, px + (targetX - px) * driftLerp, py + (targetY - py) * driftLerp, pz + (targetZ - pz) * driftLerp);
+                            continue;
+                        }
+                    }
+                    positions.setXYZ(i, px + (targetX - px) * 0.20, py + (targetY - py) * 0.20, pz + (targetZ - pz) * 0.20);
                 }
-                positions.needsUpdate = true; 
+                positions.needsUpdate = true;
             }
 
             composer.render();
+            const overlayCtx = renderer.domElement.getContext('2d');
+            if (overlayCtx && titleSequenceStart) drawCinematicTitleOverlay(overlayCtx, renderer.domElement.width, renderer.domElement.height, now);
+
+            if (isExportMode && capturer) {
+                capturer.capture(renderer.domElement);
+                exportFrameCount++;
+                // Extend export duration to ~60 seconds to fully cover one complete data cycle
+                if (exportFrameCount > 3600) {
+                    capturer.stop(); capturer.save(); isExportMode = false;
+                    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+                    renderer.setSize(window.innerWidth, window.innerHeight); composer.setSize(window.innerWidth, window.innerHeight);
+                    camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
+                    document.getElementById('ui-container').style.display = 'block';
+                }
+            }
         }
 
-        window.addEventListener('resize', onWindowResize, false);
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            composer.setSize(window.innerWidth, window.innerHeight);
-        }
-
-        animate();
-
-        window.addEventListener('keydown', (event) => {
-            if (event.key === 's' || event.key === 'S') {
-                document.getElementById('ui-container').style.display = 'none';
-                document.getElementById('scanlines').style.display = 'none'; 
-                
-                composer.render(); 
-                
-                const link = document.createElement('a');
-                link.download = `Machine_Anxiety_V4_${Date.now()}.png`;
-                link.href = renderer.domElement.toDataURL('image/png');
-                link.click();
-                
-                document.getElementById('ui-container').style.display = 'block';
-                document.getElementById('scanlines').style.display = 'block';
+        window.addEventListener('resize', () => {
+            if(!isExportMode) {
+                camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
+                renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+                renderer.setSize(window.innerWidth, window.innerHeight); composer.setSize(window.innerWidth, window.innerHeight);
             }
         });
+        animate();
     </script>
 </body>
 </html>

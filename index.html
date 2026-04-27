@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Machine Anxiety - Protocol V4 (Decoupled & Refined)</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #030303; 
+            color: #ffffff;
+            font-family: monospace; 
+        }
+
+        #scanlines {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: linear-gradient(
+                to bottom,
+                rgba(255,255,255,0),
+                rgba(255,255,255,0) 50%,
+                rgba(0,0,0,0.1) 50%,
+                rgba(0,0,0,0.1)
+            );
+            background-size: 100% 4px; 
+            pointer-events: none; 
+            z-index: 5;
+            opacity: 0.8;
+        }
+
+        #start-screen {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background-color: #000000;
+            z-index: 9999;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: opacity 1s ease-out; 
+        }
+
+        #start-text {
+            font-size: 18px;
+            letter-spacing: 4px;
+            color: #555;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { color: #222; }
+            50% { color: #888; text-shadow: 0 0 10px rgba(255,255,255,0.2); }
+            100% { color: #222; }
+        }
+
+        #ui-container {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7); 
+            padding: 15px 25px; 
+            border: 1px solid #333; 
+            text-align: center;
+            min-width: 320px; 
+            z-index: 10;
+        }
+
+        .data-row { margin: 8px 0; font-size: 14px; letter-spacing: 1px; }
+        .label { color: #666; }
+        .value { color: #eee; font-weight: bold; }
+        #display-date { font-size: 18px; color: #aaa; } 
+        .warning { color: #ff3333; animation: blink 0.5s infinite; }
+
+        @keyframes blink {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="scanlines"></div>
+
+    <div id="start-screen">
+        <div id="start-text">CLICK TO INITIALIZE SYSTEM</div>
+    </div>
+
+    <div id="ui-container">
+        <div class="data-row"><span id="display-date" class="value">SYSTEM STANDBY</span></div>
+        <div class="data-row"><span class="label">GBP/CNY (HISTORICAL): </span><span id="display-rate" class="value">--</span></div>
+        <div class="data-row"><span class="label">SYS_STRESS: </span><span id="display-stress" class="value">--</span></div>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { PLYLoader } from 'three/addons/loaders/PLYLoader.js';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+        import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+        import { RGBShiftShader } from 'three/addons/shaders/RGBShiftShader.js';
+
+        let audioCtx, oscillator, gainNode, filterNode;
+        let isAudioInitialized = false;
+        let systemStarted = false;
+
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x030303, 0.04); 
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 0.2, 4.5); 
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+        renderer.setPixelRatio(window.devicePixelRatio); 
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.target.set(0, 0.2, 0); 
+        controls.minPolarAngle = 0;         
+        controls.maxPolarAngle = Math.PI;   
+        controls.autoRotate = true;         
+        controls.autoRotateSpeed = 0.3;     
+
+        const composer = new EffectComposer(renderer);
+        const renderPass = new RenderPass(scene, camera);
+        composer.addPass(renderPass);
+
+        // 【改良点】：提高泛光阈值，这样我们可以使用亮色模型而不过曝
+        const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.6, 0.4, 0.6);
+        composer.addPass(bloomPass);
+
+        const rgbShiftPass = new ShaderPass(RGBShiftShader);
+        rgbShiftPass.uniforms['amount'].value = 0.001; 
+        composer.addPass(rgbShiftPass);
+
+        const circleCanvas = document.createElement('canvas');
+        circleCanvas.width = 32;
+        circleCanvas.height = 32;
+        const context = circleCanvas.getContext('2d');
+        context.beginPath();
+        context.arc(16, 16, 14, 0, Math.PI * 2);
+        context.fillStyle = "white";
+        context.fill();
+        const circleTexture = new THREE.CanvasTexture(circleCanvas);
+
+        let points; 
+        const loader = new PLYLoader();
+
+        loader.load('room_scan_test2.ply', function (geometry) {
+            const basePositions = new Float32Array(geometry.attributes.position.array);
+            geometry.setAttribute('basePosition', new THREE.BufferAttribute(basePositions, 3));
+
+            const material = new THREE.PointsMaterial({ 
+                // 【改良点】：绝对高亮解耦，恢复最初的高级清晰感
+                color: 0xcccccc,        
+                size: 0.008,            
+                map: circleTexture,     
+                alphaTest: 0.1,         
+                transparent: true,
+                opacity: 0.85,          
+                depthWrite: false       
+            });
+
+            points = new THREE.Points(geometry, material);
+            points.rotation.x = Math.PI / 2; 
+            scene.add(points);
+        });
+
+        let exchangeData = [];
+        let currentDayIndex = 0;
+        let lastDayChangeTime = 0;
+        const dayDuration = 500; 
+
+        let targetAnxiety = 0;  
+        let currentAnxiety = 0; 
+        
+        const BASELINE_RATE = 9.00; 
+        const MULTIPLIER = 1.2;  
+
+        const uiDate = document.getElementById('display-date');
+        const uiRate = document.getElementById('display-rate');
+        const uiStress = document.getElementById('display-stress');
+
+        fetch('chronicle_data.json')
+            .then(response => response.json())
+            .then(data => {
+                exchangeData = data;
+            });
+
+        document.getElementById('start-screen').addEventListener('click', function() {
+            if (systemStarted) return;
+            this.style.opacity = '0';
+            setTimeout(() => { this.style.display = 'none'; }, 1000);
+            
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            oscillator = audioCtx.createOscillator();
+            oscillator.type = 'sawtooth'; 
+            filterNode = audioCtx.createBiquadFilter();
+            filterNode.type = 'lowpass';
+            gainNode = audioCtx.createGain();
+            gainNode.gain.value = 0; 
+            
+            oscillator.connect(filterNode);
+            filterNode.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            oscillator.start();
+            isAudioInitialized = true;
+            systemStarted = true;
+            lastDayChangeTime = Date.now();
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+
+            if (systemStarted && exchangeData.length > 0) {
+                const now = Date.now();
+                if (now - lastDayChangeTime > dayDuration) {
+                    currentDayIndex = (currentDayIndex + 1) % exchangeData.length; 
+                    lastDayChangeTime = now;
+                }
+
+                const currentData = exchangeData[currentDayIndex];
+                const liveRate = currentData.rate;
+                
+                let rawAnxiety = Math.max(0, liveRate - BASELINE_RATE) * MULTIPLIER;
+                targetAnxiety = Math.max(0, Math.min(1, rawAnxiety));
+                
+                uiDate.innerText = currentData.date;
+                uiRate.innerText = "£1 = ¥" + liveRate.toFixed(2);
+                
+                let stressPercent = (targetAnxiety * 100).toFixed(0) + "%";
+                if (targetAnxiety > 0.8) {
+                    uiStress.innerHTML = `<span class="warning">${stressPercent} (CRITICAL)</span>`;
+                } else if (targetAnxiety === 0) {
+                    uiStress.innerText = "SAFE ZONE";
+                } else {
+                    uiStress.innerText = stressPercent;
+                }
+            }
+
+            currentAnxiety += (targetAnxiety - currentAnxiety) * 0.02;
+
+            if (isAudioInitialized) {
+                const targetVolume = 0.02 + (currentAnxiety * 0.23);
+                gainNode.gain.setTargetAtTime(targetVolume, audioCtx.currentTime, 0.1);
+                const targetFilter = 200 + (currentAnxiety * 2800);
+                filterNode.frequency.setTargetAtTime(targetFilter, audioCtx.currentTime, 0.1);
+
+                let targetPitch = 55 + (currentAnxiety * 20); 
+                if (currentAnxiety > 0.8) { 
+                    targetPitch += (Math.random() - 0.5) * 50; 
+                }
+                oscillator.frequency.setTargetAtTime(targetPitch, audioCtx.currentTime, 0.05);
+            }
+
+            bloomPass.strength = 0.2 + (currentAnxiety * 0.8); 
+            rgbShiftPass.uniforms['amount'].value = currentAnxiety * currentAnxiety * 0.015;
+            if(currentAnxiety > 0.5) {
+                rgbShiftPass.uniforms['angle'].value = Math.random() * Math.PI * 2;
+            }
+
+            if (points && points.geometry) {
+                const positions = points.geometry.attributes.position;
+                const bases = points.geometry.attributes.basePosition;
+                const count = positions.count;
+                const time = Date.now() * 0.0015; 
+
+                // 【核心改良】：双段映射风化系统
+                let finalInstability = 0;
+                if (currentAnxiety <= 0.6) {
+                    // 平滑区 (0-60%)：极小的基数，保证物体绝对清晰，只有微风抖动
+                    finalInstability = (currentAnxiety / 0.6) * 0.015; 
+                } else {
+                    // 崩解区 (60%-100%)：平滑过渡后，指数级拉扯
+                    let overage = (currentAnxiety - 0.6) / 0.4; // 换算成 0到1的比例
+                    finalInstability = 0.015 + (overage * overage) * 0.135;
+                }
+
+                for (let i = 0; i < count; i++) {
+                    const weight = Math.abs(Math.sin(i * 12.9898)); 
+                    const jitterX = (Math.random() - 0.5) * finalInstability * 0.02;
+                    const jitterY = (Math.random() - 0.5) * finalInstability * 0.02;
+                    const jitterZ = (Math.random() - 0.5) * finalInstability * 0.02;
+
+                    const windX = finalInstability * weight * 2.0 * (Math.sin(time + bases.getY(i) * 5) + 1); 
+                    const windY = finalInstability * weight * 0.3 * (Math.sin(time * 1.2 + bases.getX(i) * 4)); 
+                    const windZ = finalInstability * weight * 1.5 * (Math.cos(time + bases.getY(i) * 3) + 1); 
+
+                    positions.setXYZ(
+                        i, 
+                        bases.getX(i) + jitterX + windX, 
+                        bases.getY(i) + jitterY + windY, 
+                        bases.getZ(i) + jitterZ + windZ
+                    );
+                }
+                positions.needsUpdate = true; 
+            }
+
+            composer.render();
+        }
+
+        window.addEventListener('resize', onWindowResize, false);
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        animate();
+
+        window.addEventListener('keydown', (event) => {
+            if (event.key === 's' || event.key === 'S') {
+                document.getElementById('ui-container').style.display = 'none';
+                document.getElementById('scanlines').style.display = 'none'; 
+                
+                composer.render(); 
+                
+                const link = document.createElement('a');
+                link.download = `Machine_Anxiety_V4_${Date.now()}.png`;
+                link.href = renderer.domElement.toDataURL('image/png');
+                link.click();
+                
+                document.getElementById('ui-container').style.display = 'block';
+                document.getElementById('scanlines').style.display = 'block';
+            }
+        });
+    </script>
+</body>
+</html>

@@ -16,6 +16,8 @@ The project exists as a real-time WebGL system driven by historical GBP/CNY exch
 
 This is the stable submitted version. Experimental preview links are tracked in [VERSIONS.md](VERSIONS.md).
 
+The reusable system structure and future expansion plan are documented in [PROJECT_TEMPLATE.md](PROJECT_TEMPLATE.md).
+
 ## Video
 
 👉 [Watch the final video](https://vimeo.com/1188890187)
@@ -67,6 +69,8 @@ Opening `index.html` directly may work in some browsers, but a local server is s
 The `main` branch is kept as the stable submitted version while existing submissions are under review.
 
 Preview branches should remain separate until a new version is ready to replace the public production URL. See [VERSIONS.md](VERSIONS.md) for the current branch and deployment map.
+
+For future works derived from this project, use [PROJECT_TEMPLATE.md](PROJECT_TEMPLATE.md) as the system checklist before changing models, data sources, visual deformation, sound, export settings, or external software connections.
 
 ## Data
 The dataset consists of historical GBP/CNY exchange-rate values recorded between September 2024 and April 2026.

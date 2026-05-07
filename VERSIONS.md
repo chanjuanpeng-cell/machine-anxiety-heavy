@@ -2,6 +2,8 @@
 
 This file records the current public and preview versions of the project.
 
+The reusable system structure is documented in [PROJECT_TEMPLATE.md](PROJECT_TEMPLATE.md).
+
 ## Stable Submitted Version
 
 - Branch: `main`
@@ -30,3 +32,5 @@ This file records the current public and preview versions of the project.
 ## Working Rule
 
 Do not merge preview branches into `main` until the submitted version no longer needs to remain unchanged.
+
+Use `presentation-stability-v2` as the current mother-system candidate for future branches unless a later branch is explicitly promoted.

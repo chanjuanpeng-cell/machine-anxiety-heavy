@@ -204,6 +204,9 @@
         const DEVIATION_WEIGHT = 0.62;
         const VELOCITY_WEIGHT = 0.30;
         const SHOCK_WEIGHT = 0.26;
+        const PRESSURE_ORIGIN = new THREE.Vector3(-1.15, 0.22, 1.35);
+        const PRESSURE_RADIUS = 2.65;
+        const RECOGNITION_HOLD_ANXIETY = 0.18;
         const SYSTEM_DELAY_MS = 2500;
         const SHORT_HOLD_MS = 400;     
         const FINAL_HOLD_MS = 3000;    
@@ -657,8 +660,9 @@
             scene.fog.density = 0.04 + (BASE_FOG_DENSITY * 1.4 * endFade);
 
             if (points && points.material) {
-                points.material.size = 0.0075 * (1 - endFade * 0.08);
-                points.material.opacity = 0.82 * (1 - endFade * 0.22);
+                const recognitionHold = 1 - THREE.MathUtils.clamp(currentAnxiety / RECOGNITION_HOLD_ANXIETY, 0, 1);
+                points.material.size = (0.0075 + recognitionHold * 0.0012) * (1 - endFade * 0.08);
+                points.material.opacity = (0.82 + recognitionHold * 0.10) * (1 - endFade * 0.22);
             }
             pointFrameSkip = (pointFrameSkip + 1) % POINT_UPDATE_INTERVAL;
             if (points && points.geometry && points.geometry.attributes.basePosition && !motionPaused && pointFrameSkip === 0) {
@@ -672,6 +676,8 @@
                 const visualStress = currentAnxiety;
                 let finalInstability = visualStress <= 0.55 ? (visualStress / 0.55) * 0.0065 : 0.0065 + Math.pow((visualStress - 0.55) / 0.45, 2) * 0.095;
                 const collapseDrive = visualStress > 0.72 ? (visualStress - 0.72) / 0.28 : 0;
+                const pressureDrive = THREE.MathUtils.clamp((visualStress - 0.22) / 0.78, 0, 1);
+                const pressurePulse = 0.78 + 0.22 * Math.sin(time * 2.4);
 
                 for (let i = 0; i < count; i++) {
                     const bx = bases.getX(i), by = bases.getY(i), bz = bases.getZ(i);
@@ -679,13 +685,25 @@
 
                     const dist = Math.sqrt(bx * bx + by * by + bz * bz);
                     const edgeWeight = Math.min(1, (1.0 - Math.exp(-dist * 1.45)) * 1.35);
+                    const pressureDistance = Math.sqrt(
+                        Math.pow(bx - PRESSURE_ORIGIN.x, 2) +
+                        Math.pow(by - PRESSURE_ORIGIN.y, 2) +
+                        Math.pow(bz - PRESSURE_ORIGIN.z, 2)
+                    );
+                    const pressureWeight = Math.pow(THREE.MathUtils.clamp(1 - pressureDistance / PRESSURE_RADIUS, 0, 1), 1.7) * pressureDrive;
 
                     const fieldA = Math.sin(bx * 2.9 + time * 1.20) * Math.cos(by * 2.4 + time * 0.95);
                     const fieldB = Math.cos(bz * 2.7 - time * 1.08) * Math.sin(by * 2.1 + time * 0.84);
                     const fieldC = Math.sin((bx + bz) * 2.0 + time * 0.76);
+                    const scanSlice = Math.sin((bx * 5.7) + (bz * 3.2) - time * 2.15);
+                    const scanBreak = pressureWeight * pressureWeight * Math.max(0, scanSlice) * pressurePulse;
 
                     const radialLen = Math.max(0.0001, dist);
                     const radialX = bx / radialLen, radialY = by / radialLen, radialZ = bz / radialLen;
+                    const pressureLen = Math.max(0.0001, pressureDistance);
+                    const pressureX = (bx - PRESSURE_ORIGIN.x) / pressureLen;
+                    const pressureY = (by - PRESSURE_ORIGIN.y) / pressureLen;
+                    const pressureZ = (bz - PRESSURE_ORIGIN.z) / pressureLen;
 
                     const baseOutward = finalInstability * edgeWeight * 1.35;
                     const baseFlow = finalInstability * (0.55 + edgeWeight * 1.05);
@@ -694,13 +712,17 @@
                     let targetY = by + radialY * baseOutward * 0.50 + fieldB * baseFlow * 0.40;
                     let targetZ = bz + radialZ * baseOutward + fieldB * baseFlow * 0.74 + fieldC * baseFlow * 0.26;
 
+                    targetX += pressureX * scanBreak * 0.22 + pressureWeight * fieldA * 0.038;
+                    targetY += pressureY * scanBreak * 0.075 + pressureWeight * fieldB * 0.018;
+                    targetZ += pressureZ * scanBreak * 0.18 + pressureWeight * fieldC * 0.036;
+
                     if (collapseDrive > 0) {
-                        const isDetached = Math.abs(Math.sin(i * 91.173 + bx * 3.1 + bz * 2.7)) > (0.82 - collapseDrive * 0.34 - edgeWeight * 0.18);
+                        const isDetached = Math.abs(Math.sin(i * 91.173 + bx * 3.1 + bz * 2.7)) > (0.82 - collapseDrive * 0.34 - edgeWeight * 0.18 - pressureWeight * 0.12);
                         if (isDetached) {
-                            const burst = collapseDrive * collapseDrive * (0.55 + edgeWeight * 1.35);
-                            targetX += radialX * burst * 2.2 + fieldA * burst * 0.8;
-                            targetY += radialY * burst * 0.9 + fieldB * burst * 0.55;
-                            targetZ += radialZ * burst * 2.0 + fieldC * burst * 0.7;
+                            const burst = collapseDrive * collapseDrive * (0.55 + edgeWeight * 1.35 + pressureWeight * 0.65);
+                            targetX += radialX * burst * 2.2 + pressureX * burst * 0.65 + fieldA * burst * 0.8;
+                            targetY += radialY * burst * 0.9 + pressureY * burst * 0.26 + fieldB * burst * 0.55;
+                            targetZ += radialZ * burst * 2.0 + pressureZ * burst * 0.56 + fieldC * burst * 0.7;
                             const driftLerp = 0.085 + collapseDrive * 0.05;
                             positions.setXYZ(i, px + (targetX - px) * driftLerp, py + (targetY - py) * driftLerp, pz + (targetZ - pz) * driftLerp);
                             continue;

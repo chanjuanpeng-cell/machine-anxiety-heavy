@@ -55,6 +55,20 @@
             letter-spacing: 1.5px;
             text-transform: uppercase;
         }
+        #load-status {
+            position: absolute;
+            top: 24px;
+            left: 24px;
+            z-index: 12;
+            color: #777;
+            font-size: 11px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            pointer-events: none;
+        }
+        #load-status.error {
+            color: #cfcfcf;
+        }
     </style>
 </head>
 <body>
@@ -72,6 +86,7 @@
         <div class="data-row"><span class="label">GBP/CNY</span><span id="display-rate" class="value">--</span></div>
         <div class="data-row"><span class="label">spatial condition</span><span id="display-stress" class="value">--</span></div>
     </div>
+    <div id="load-status">LOADING ROOM SCAN</div>
 
     <script type="importmap">
         { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
@@ -168,6 +183,24 @@
         const context = circleCanvas.getContext('2d'); context.beginPath(); context.arc(16, 16, 14, 0, Math.PI * 2); context.fillStyle = "white"; context.fill();
         const circleTexture = new THREE.CanvasTexture(circleCanvas);
 
+        const loadStatus = document.getElementById('load-status');
+
+        function setLoadStatus(message, isError = false) {
+            if (!loadStatus) return;
+            loadStatus.textContent = message;
+            loadStatus.classList.toggle('error', isError);
+            loadStatus.style.display = message ? 'block' : 'none';
+        }
+
+        let isRoomLoaded = false;
+        let isDataLoaded = false;
+
+        function updateLoadStatus() {
+            if (isRoomLoaded && isDataLoaded) setLoadStatus('');
+            else if (!isRoomLoaded) setLoadStatus('LOADING ROOM SCAN');
+            else setLoadStatus('LOADING EXCHANGE DATA');
+        }
+
         let points; 
         new PLYLoader().load('room_scan_test2.ply', function (geometry) {
             const basePositions = new Float32Array(geometry.attributes.position.array);
@@ -182,6 +215,10 @@
             camera.position.copy(PUSH_START_CAMERA);
             controls.target.copy(PUSH_START_TARGET);
             controls.update();
+            isRoomLoaded = true;
+            updateLoadStatus();
+        }, undefined, function () {
+            setLoadStatus('ROOM SCAN FAILED TO LOAD', true);
         });
 
         let exchangeData = [];
@@ -321,7 +358,19 @@
         const uiRate = document.getElementById('display-rate');
         const uiStress = document.getElementById('display-stress');
 
-        fetch('chronicle_data.json').then(response => response.json()).then(data => { exchangeData = data; });
+        fetch('chronicle_data.json')
+            .then(response => {
+                if (!response.ok) throw new Error('Exchange data request failed');
+                return response.json();
+            })
+            .then(data => {
+                exchangeData = data;
+                isDataLoaded = true;
+                updateLoadStatus();
+            })
+            .catch(() => {
+                setLoadStatus('EXCHANGE DATA FAILED TO LOAD', true);
+            });
 
         function resetSystemState() {
             currentDayIndex = 0;

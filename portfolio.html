@@ -89,7 +89,7 @@ a:hover {
 
 <h1>Machine Anxiety</h1>
 <div class="meta">
-2026 — Single-channel video + real-time WebGL system — 54 seconds
+2026 — Single-channel video + real-time WebGL system
 </div>
 
 <p>
@@ -97,11 +97,15 @@ A data-driven moving image in which a private interior is destabilised by histor
 </p>
 
 <p>
-Machine Anxiety translates macroeconomic volatility into spatial instability. Using exchange-rate data recorded between September 2024 and April 2026, the work drives a LiDAR-scanned model of the artist’s student accommodation.
+Machine Anxiety translates macroeconomic volatility into spatial instability. Using exchange-rate data recorded between September 2024 and April 2026, the work drives a LiDAR-scanned point-cloud model of the artist’s student accommodation.
 </p>
 
 <p>
-As the data shifts, the space trembles, rotates, and gradually loses coherence, revealing how distant financial systems exert pressure on intimate environments.
+As the data shifts, the space trembles, rotates, sounds, and gradually loses coherence, revealing how distant financial systems exert pressure on intimate environments.
+</p>
+
+<p>
+The current preview system maps exchange-rate deviation, velocity, and shock into spatial deformation, camera pressure, point-cloud instability, and layered Web Audio. Anxiety is treated not as an internal emotion, but as a computational pressure acting on the room.
 </p>
 
 <h2>Video</h2>
@@ -113,8 +117,12 @@ As the data shifts, the space trembles, rotates, and gradually loses coherence, 
 <h2>Live System</h2>
 
 <div class="links">
+<a href="https://machine-anxiety-git-presenta-b4fbda-chanjuanpeng-cells-projects.vercel.app" target="_blank">
+View current preview system →
+</a>
+<br><br>
 <a href="https://machine-anxiety.vercel.app/" target="_blank">
-View real-time version →
+View submitted stable version →
 </a>
 </div>
 
@@ -125,7 +133,11 @@ The work operates as a closed computational system where financial data acts as 
 </p>
 
 <p>
-Exchange-rate values are mapped to spatial deformation, rotation speed, camera movement, and particle density, producing a behavioural transformation of space rather than a direct visualisation of data.
+The updated real-time system calculates anxiety through three related signals: deviation from a baseline, velocity between recorded exchange-rate points, and shock caused by abrupt change. These signals drive spatial deformation, rotation speed, camera movement, point-cloud density, and a layered audio system.
+</p>
+
+<p>
+The result is a behavioural transformation of space rather than a direct visualisation of data. The room does not display the exchange rate; it absorbs it.
 </p>
 
 <h2>Technical</h2>
@@ -134,6 +146,9 @@ Exchange-rate values are mapped to spatial deformation, rotation speed, camera m
     <li>Custom Three.js / WebGL system</li>
     <li>Point-cloud environment reconstructed from LiDAR scan (~300k vertices)</li>
     <li>Historical GBP/CNY exchange-rate dataset structured as JSON</li>
+    <li>Data mapping based on deviation, velocity, and shock</li>
+    <li>Layered Web Audio system driven by the same data signals</li>
+    <li>Branch-based versioning with Vercel preview deployments</li>
     <li>Offline frame-by-frame rendering via CCapture.js</li>
     <li>Final composition and sound editing in Adobe Premiere Pro</li>
 </ul>
@@ -141,7 +156,8 @@ Exchange-rate values are mapped to spatial deformation, rotation speed, camera m
 <h2>Links</h2>
 
 <p>
-<a href="https://machine-anxiety.vercel.app/" target="_blank">Live system</a><br>
+<a href="https://machine-anxiety-git-presenta-b4fbda-chanjuanpeng-cells-projects.vercel.app" target="_blank">Current preview system</a><br>
+<a href="https://machine-anxiety.vercel.app/" target="_blank">Submitted stable system</a><br>
 <a href="https://vimeo.com/1182278340" target="_blank">Video</a><br>
 <a href="https://github.com/chanjuanpeng-cell/machine-anxiety" target="_blank">Code</a>
 </p>

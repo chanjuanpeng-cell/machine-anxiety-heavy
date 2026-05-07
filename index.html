@@ -194,10 +194,15 @@
         let deformationImpulse = 0;
         let previousRateForDeformation = null;
         
-        // Visual calibration restored from the simulated-data version.
-        // This makes the real exchange-rate data produce a stronger spatial response.
+        // Data-mapping v2:
+        // Anxiety is driven by deviation, velocity, and shock rather than rate height alone.
         const BASELINE_RATE = 9.00;
-        const MULTIPLIER = 1.2;
+        const RATE_RANGE_FOR_DEVIATION = 0.72;
+        const RATE_RANGE_FOR_VELOCITY = 0.32;
+        const SHOCK_THRESHOLD = 0.18;
+        const DEVIATION_WEIGHT = 0.62;
+        const VELOCITY_WEIGHT = 0.30;
+        const SHOCK_WEIGHT = 0.26;
         const SYSTEM_DELAY_MS = 2500;
         const SHORT_HOLD_MS = 400;     
         const FINAL_HOLD_MS = 3000;    
@@ -287,6 +292,25 @@
         function getDataIndexFromProgress(progress) {
             if (!exchangeData.length) return 0;
             return Math.min(exchangeData.length - 1, Math.floor(progress * exchangeData.length));
+        }
+
+        function getMappedAnxiety(index) {
+            if (!exchangeData.length) return { anxiety: 0, deviation: 0, velocity: 0, shock: 0, movement: 0 };
+
+            const activeData = exchangeData[index];
+            const previousData = exchangeData[Math.max(0, index - 1)];
+            const movement = Math.abs(activeData.rate - previousData.rate);
+
+            const deviation = THREE.MathUtils.clamp(Math.abs(activeData.rate - BASELINE_RATE) / RATE_RANGE_FOR_DEVIATION, 0, 1);
+            const velocity = THREE.MathUtils.clamp(movement / RATE_RANGE_FOR_VELOCITY, 0, 1);
+            const shock = THREE.MathUtils.clamp((movement - SHOCK_THRESHOLD) / RATE_RANGE_FOR_VELOCITY, 0, 1);
+            const anxiety = THREE.MathUtils.clamp(
+                deviation * DEVIATION_WEIGHT + velocity * VELOCITY_WEIGHT + shock * SHOCK_WEIGHT,
+                0,
+                1
+            );
+
+            return { anxiety, deviation, velocity, shock, movement };
         }
 
         const uiDate = document.getElementById('display-date');
@@ -517,18 +541,16 @@
                         lastDayChangeTime = now;
                     }
 
-                    const activeData = exchangeData[currentDayIndex];
-                    let rawAnxiety = Math.max(0, activeData.rate - BASELINE_RATE) * MULTIPLIER;
-                    targetAnxiety = Math.max(0, Math.min(1, rawAnxiety));
+                    const mappedData = getMappedAnxiety(currentDayIndex);
+                    targetAnxiety = mappedData.anxiety;
 
-                    // Classic behaviour restored: the room responds to the continuous anxiety level.
-                    // The updated dataset still drives the work, but deformation is no longer split into competing impulse systems.
-                    let rateMovement = 0;
-                    if (previousRateForDeformation !== null) {
-                        rateMovement = Math.abs(activeData.rate - previousRateForDeformation);
-                    }
-                    targetDataDistancePulse = THREE.MathUtils.clamp(rateMovement * 1.8 + targetAnxiety * 0.10, 0, 0.32);
-                    previousRateForDeformation = activeData.rate;
+                    // Volatility and shock add sharper pressure changes on top of the continuous anxiety field.
+                    targetDataDistancePulse = THREE.MathUtils.clamp(
+                        mappedData.movement * 1.45 + mappedData.velocity * 0.10 + mappedData.shock * 0.18,
+                        0,
+                        0.32
+                    );
+                    previousRateForDeformation = exchangeData[currentDayIndex].rate;
 
                     // Keep the real-data anxiety signal visually strong through the full cycle.
                     // The simulated-data version felt stronger because it did not damp the model before the ending.

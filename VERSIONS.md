@@ -1,0 +1,32 @@
+# Machine Anxiety Version Map
+
+This file records the current public and preview versions of the project.
+
+## Stable Submitted Version
+
+- Branch: `main`
+- URL: https://machine-anxiety.vercel.app
+- Purpose: original submitted / competition-safe version
+- Notes: keep unchanged while existing submissions are under review.
+
+## Data Mapping V2
+
+- Branch: `data-mapping-v2`
+- URL: https://machine-anxiety-git-data-mapping-v2-chanjuanpeng-cells-projects.vercel.app/
+- Purpose: updates anxiety mapping from rate-height-only to deviation, velocity, and shock.
+
+## Sound V2
+
+- Branch: `sound-v2`
+- URL: https://machine-anxiety-git-sound-v2-chanjuanpeng-cells-projects.vercel.app
+- Purpose: builds on `data-mapping-v2` with layered data-driven sound.
+
+## Visual V2
+
+- Branch: `visual-v2`
+- URL: https://machine-anxiety-git-visual-v2-chanjuanpeng-cells-projects.vercel.app
+- Purpose: builds on `sound-v2` with subtle directional point-cloud pressure.
+
+## Working Rule
+
+Do not merge preview branches into `main` until the submitted version no longer needs to remain unchanged.

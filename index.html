@@ -69,6 +69,18 @@
         #load-status.error {
             color: #cfcfcf;
         }
+        #export-status {
+            position: absolute;
+            top: 24px;
+            right: 24px;
+            z-index: 12;
+            color: #8a8a8a;
+            font-size: 11px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            pointer-events: none;
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -87,6 +99,7 @@
         <div class="data-row"><span class="label">spatial condition</span><span id="display-stress" class="value">--</span></div>
     </div>
     <div id="load-status">LOADING ROOM SCAN</div>
+    <div id="export-status"></div>
 
     <script type="importmap">
         { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
@@ -143,9 +156,14 @@
                 path: 'chronicle_data.json'
             },
             export: {
-                width: 2880,
-                height: 1620,
-                frames: 3600
+                sequenceWidth: 2880,
+                sequenceHeight: 1620,
+                sequenceFrames: 3600,
+                sequenceFramerate: 60,
+                sequenceName: 'Machine_Anxiety_FinalFlow_HQ',
+                stillWidth: 3840,
+                stillHeight: 2160,
+                stillName: 'Machine_Anxiety_Still'
             }
         };
 
@@ -529,59 +547,114 @@
             setTimeout(() => { introOverlay.style.display = 'none'; }, 950);
         }, { once: true });
 
-        // === K 键离线渲染逻辑 (保持 JPG 高清导出) ===
-        window.addEventListener('keydown', (event) => {
-            if (event.key.toLowerCase() === 'k') {
-                if (!isExportMode) {
-                    // High-resolution JPG export for PR compositing.
-                    // 2880x1620 keeps the same 16:9 ratio but gives sharper frames than 1920x1080.
-                    isExportMode = true;
-                    exportFrameCount = 0;
-                    virtualTime = Date.now(); 
-                    renderer.setPixelRatio(1);
-                    renderer.setSize(SYSTEM_CONFIG.export.width, SYSTEM_CONFIG.export.height, false);
-                    composer.setSize(SYSTEM_CONFIG.export.width, SYSTEM_CONFIG.export.height);
-                    camera.aspect = SYSTEM_CONFIG.export.width / SYSTEM_CONFIG.export.height;
-                    camera.updateProjectionMatrix();
-                    capturer = new CCapture({
-                        format: 'jpg',
-                        framerate: 60,
-                        quality: 100,
-                        name: 'Machine_Anxiety_FinalFlow_HQ'
-                    });
-                    document.getElementById('ui-container').style.display = 'none';
-                    lastDayChangeTime = virtualTime;
-                    shotStartTime = virtualTime;
-                    currentAnxiety = 0;
-                    targetAnxiety = 0;
-                    deformationDrive = 0;
-                    targetDeformationDrive = 0;
-                    deformationImpulse = 0;
-                    cinematicDataPush = 0;
-                    dataDistancePulse = 0;
-                    targetDataDistancePulse = 0;
-                    previousRateForCamera = null;
-                    previousRateForDeformation = null;
-                    pointFrameSkip = 0;
-                    cameraSmoothingReady = false;
-                    cameraSmoothingReady = false;
-                    // Restore classic auto-rotate state and speed for export
-                    controls.autoRotate = true;
-                    controls.autoRotateSpeed = -1.25;
-                    capturer.start();
-                    console.log("PRODUCTION: 1620P FLUID EXPORT STARTED");
-                } else {
-                    capturer.stop();
-                    capturer.save();
-                    isExportMode = false;
-                    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-                    renderer.setSize(window.innerWidth, window.innerHeight);
-                    composer.setSize(window.innerWidth, window.innerHeight);
-                    camera.aspect = window.innerWidth / window.innerHeight;
-                    camera.updateProjectionMatrix();
-                    document.getElementById('ui-container').style.display = 'block';
-                    console.log("PRODUCTION: EXPORT FINISHED");
+        const exportStatus = document.getElementById('export-status');
+
+        function setExportStatus(message) {
+            if (!exportStatus) return;
+            exportStatus.textContent = message;
+            exportStatus.style.display = message ? 'block' : 'none';
+        }
+
+        function restorePreviewViewport() {
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+        }
+
+        function prepareExportViewport(width, height) {
+            renderer.setPixelRatio(1);
+            renderer.setSize(width, height, false);
+            composer.setSize(width, height);
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+        }
+
+        function resetExportTimeline() {
+            virtualTime = Date.now();
+            lastDayChangeTime = virtualTime;
+            shotStartTime = virtualTime;
+            currentAnxiety = 0;
+            targetAnxiety = 0;
+            deformationDrive = 0;
+            targetDeformationDrive = 0;
+            deformationImpulse = 0;
+            cinematicDataPush = 0;
+            dataDistancePulse = 0;
+            targetDataDistancePulse = 0;
+            previousRateForCamera = null;
+            previousRateForDeformation = null;
+            pointFrameSkip = 0;
+            cameraSmoothingReady = false;
+            controls.autoRotate = true;
+            controls.autoRotateSpeed = -1.25;
+        }
+
+        function startSequenceExport() {
+            isExportMode = true;
+            exportFrameCount = 0;
+            prepareExportViewport(SYSTEM_CONFIG.export.sequenceWidth, SYSTEM_CONFIG.export.sequenceHeight);
+            capturer = new CCapture({
+                format: 'jpg',
+                framerate: SYSTEM_CONFIG.export.sequenceFramerate,
+                quality: 100,
+                name: SYSTEM_CONFIG.export.sequenceName
+            });
+            document.getElementById('ui-container').style.display = 'none';
+            resetExportTimeline();
+            capturer.start();
+            setExportStatus('EXPORTING JPG SEQUENCE 0%');
+            console.log('PRODUCTION: SEQUENCE EXPORT STARTED');
+        }
+
+        function finishSequenceExport() {
+            if (capturer) {
+                capturer.stop();
+                capturer.save();
+            }
+            capturer = null;
+            isExportMode = false;
+            restorePreviewViewport();
+            document.getElementById('ui-container').style.display = 'block';
+            setExportStatus('EXPORT SAVED');
+            setTimeout(() => setExportStatus(''), 2200);
+            console.log('PRODUCTION: EXPORT FINISHED');
+        }
+
+        function captureStillImage() {
+            if (isExportMode) return;
+            const exportConfig = SYSTEM_CONFIG.export;
+            setExportStatus('CAPTURING STILL');
+            prepareExportViewport(exportConfig.stillWidth, exportConfig.stillHeight);
+            composer.render();
+            renderer.domElement.toBlob((blob) => {
+                if (!blob) {
+                    restorePreviewViewport();
+                    return;
                 }
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = `${exportConfig.stillName}_${Date.now()}.png`;
+                link.click();
+                URL.revokeObjectURL(link.href);
+                restorePreviewViewport();
+                setExportStatus('STILL SAVED');
+                setTimeout(() => setExportStatus(''), 1800);
+            }, 'image/png');
+        }
+
+        // Export controls: S saves one high-resolution still, K starts/stops a JPG sequence.
+        window.addEventListener('keydown', (event) => {
+            const key = event.key.toLowerCase();
+            if (key === 's') {
+                event.preventDefault();
+                captureStillImage();
+            }
+            if (key === 'k') {
+                event.preventDefault();
+                if (!isExportMode) startSequenceExport();
+                else finishSequenceExport();
             }
         });
 
@@ -830,14 +903,9 @@
             if (isExportMode && capturer) {
                 capturer.capture(renderer.domElement);
                 exportFrameCount++;
-                // Extend export duration to ~60 seconds to fully cover one complete data cycle
-                if (exportFrameCount > SYSTEM_CONFIG.export.frames) {
-                    capturer.stop(); capturer.save(); isExportMode = false;
-                    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-                    renderer.setSize(window.innerWidth, window.innerHeight); composer.setSize(window.innerWidth, window.innerHeight);
-                    camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
-                    document.getElementById('ui-container').style.display = 'block';
-                }
+                const progress = Math.min(100, Math.round((exportFrameCount / SYSTEM_CONFIG.export.sequenceFrames) * 100));
+                setExportStatus(`EXPORTING JPG SEQUENCE ${progress}%`);
+                if (exportFrameCount > SYSTEM_CONFIG.export.sequenceFrames) finishSequenceExport();
             }
         }
 

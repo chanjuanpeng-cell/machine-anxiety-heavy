@@ -20,6 +20,8 @@ The reusable system structure and future expansion plan are documented in [PROJE
 
 The first future-work branch for replacing the point-cloud model is documented in [MODEL_REPLACEMENT_GUIDE.md](MODEL_REPLACEMENT_GUIDE.md).
 
+The export workflow for high-resolution stills and JPG sequences is documented in [EXPORT_PIPELINE_GUIDE.md](EXPORT_PIPELINE_GUIDE.md).
+
 ## Video
 
 👉 [Watch the final video](https://vimeo.com/1188890187)
@@ -75,6 +77,8 @@ Preview branches should remain separate until a new version is ready to replace 
 For future works derived from this project, use [PROJECT_TEMPLATE.md](PROJECT_TEMPLATE.md) as the system checklist before changing models, data sources, visual deformation, sound, export settings, or external software connections.
 
 For new scans or model-based works, start with [MODEL_REPLACEMENT_GUIDE.md](MODEL_REPLACEMENT_GUIDE.md).
+
+For still images and video-sequence output, use [EXPORT_PIPELINE_GUIDE.md](EXPORT_PIPELINE_GUIDE.md).
 
 ## Data
 The dataset consists of historical GBP/CNY exchange-rate values recorded between September 2024 and April 2026.

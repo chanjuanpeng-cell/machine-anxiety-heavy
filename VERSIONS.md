@@ -36,6 +36,13 @@ The reusable system structure is documented in [PROJECT_TEMPLATE.md](PROJECT_TEM
 - Purpose: builds on `presentation-stability-v2` by grouping model, camera, pressure, data, and export settings into a reusable configuration layer.
 - Guide: [MODEL_REPLACEMENT_GUIDE.md](MODEL_REPLACEMENT_GUIDE.md)
 
+## Export Pipeline V2
+
+- Branch: `export-pipeline-v2`
+- URL: pending Vercel preview
+- Purpose: builds on `model-replacement-v2` with clearer still-image and JPG-sequence export controls.
+- Guide: [EXPORT_PIPELINE_GUIDE.md](EXPORT_PIPELINE_GUIDE.md)
+
 ## Working Rule
 
 Do not merge preview branches into `main` until the submitted version no longer needs to remain unchanged.

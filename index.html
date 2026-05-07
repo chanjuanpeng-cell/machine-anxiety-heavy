@@ -126,6 +126,29 @@
         const TITLE_FADE_MS = 1400;
         let titleSequenceStart = 0;
 
+        const SYSTEM_CONFIG = {
+            model: {
+                label: 'ROOM SCAN',
+                path: 'room_scan_test2.ply',
+                pointSize: 0.0075,
+                pointOpacity: 0.82,
+                pointColor: 0xd0d0d0,
+                alphaTest: 0.12,
+                startCamera: new THREE.Vector3(-0.599, 0.323, 2.251),
+                startTarget: new THREE.Vector3(0.125, 0.225, -0.06),
+                pressureOrigin: new THREE.Vector3(-1.15, 0.22, 1.35),
+                pressureRadius: 2.65
+            },
+            data: {
+                path: 'chronicle_data.json'
+            },
+            export: {
+                width: 2880,
+                height: 1620,
+                frames: 3600
+            }
+        };
+
         const scene = new THREE.Scene();
         scene.fog = new THREE.FogExp2(0x030303, 0.04); 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -175,8 +198,8 @@
         rgbShiftPass.uniforms['amount'].value = 0.0002; 
         composer.addPass(rgbShiftPass);
 
-        const PUSH_START_CAMERA = new THREE.Vector3(-0.599, 0.323, 2.251);
-        const PUSH_START_TARGET = new THREE.Vector3(0.125, 0.225, -0.06);
+        const PUSH_START_CAMERA = SYSTEM_CONFIG.model.startCamera;
+        const PUSH_START_TARGET = SYSTEM_CONFIG.model.startTarget;
         let shotStartTime = 0;
 
         const circleCanvas = document.createElement('canvas'); circleCanvas.width = 32; circleCanvas.height = 32;
@@ -197,29 +220,47 @@
 
         function updateLoadStatus() {
             if (isRoomLoaded && isDataLoaded) setLoadStatus('');
-            else if (!isRoomLoaded) setLoadStatus('LOADING ROOM SCAN');
+            else if (!isRoomLoaded) setLoadStatus(`LOADING ${SYSTEM_CONFIG.model.label}`);
             else setLoadStatus('LOADING EXCHANGE DATA');
         }
 
-        let points; 
-        new PLYLoader().load('room_scan_test2.ply', function (geometry) {
-            const basePositions = new Float32Array(geometry.attributes.position.array);
-            geometry.setAttribute('basePosition', new THREE.BufferAttribute(basePositions, 3));
+        let points;
 
-            const material = new THREE.PointsMaterial({
-                color: 0xd0d0d0, size: 0.0075, map: circleTexture, alphaTest: 0.12, transparent: true, opacity: 0.82, depthWrite: false
-            });
-            points = new THREE.Points(geometry, material);
-            geometry.computeBoundingBox(); const center = new THREE.Vector3(); geometry.boundingBox.getCenter(center);
-            points.position.set(-center.x, -center.y, -center.z); scene.add(points);
-            camera.position.copy(PUSH_START_CAMERA);
-            controls.target.copy(PUSH_START_TARGET);
+        function applyModelStartView() {
+            camera.position.copy(SYSTEM_CONFIG.model.startCamera);
+            controls.target.copy(SYSTEM_CONFIG.model.startTarget);
             controls.update();
-            isRoomLoaded = true;
-            updateLoadStatus();
-        }, undefined, function () {
-            setLoadStatus('ROOM SCAN FAILED TO LOAD', true);
-        });
+        }
+
+        function loadPointCloudModel(modelConfig) {
+            new PLYLoader().load(modelConfig.path, function (geometry) {
+                const basePositions = new Float32Array(geometry.attributes.position.array);
+                geometry.setAttribute('basePosition', new THREE.BufferAttribute(basePositions, 3));
+
+                const material = new THREE.PointsMaterial({
+                    color: modelConfig.pointColor,
+                    size: modelConfig.pointSize,
+                    map: circleTexture,
+                    alphaTest: modelConfig.alphaTest,
+                    transparent: true,
+                    opacity: modelConfig.pointOpacity,
+                    depthWrite: false
+                });
+                points = new THREE.Points(geometry, material);
+                geometry.computeBoundingBox();
+                const center = new THREE.Vector3();
+                geometry.boundingBox.getCenter(center);
+                points.position.set(-center.x, -center.y, -center.z);
+                scene.add(points);
+                applyModelStartView();
+                isRoomLoaded = true;
+                updateLoadStatus();
+            }, undefined, function () {
+                setLoadStatus(`${modelConfig.label} FAILED TO LOAD`, true);
+            });
+        }
+
+        loadPointCloudModel(SYSTEM_CONFIG.model);
 
         let exchangeData = [];
         let currentDayIndex = 0;
@@ -241,8 +282,8 @@
         const DEVIATION_WEIGHT = 0.62;
         const VELOCITY_WEIGHT = 0.30;
         const SHOCK_WEIGHT = 0.26;
-        const PRESSURE_ORIGIN = new THREE.Vector3(-1.15, 0.22, 1.35);
-        const PRESSURE_RADIUS = 2.65;
+        const PRESSURE_ORIGIN = SYSTEM_CONFIG.model.pressureOrigin;
+        const PRESSURE_RADIUS = SYSTEM_CONFIG.model.pressureRadius;
         const RECOGNITION_HOLD_ANXIETY = 0.18;
         const SYSTEM_DELAY_MS = 2500;
         const SHORT_HOLD_MS = 400;     
@@ -321,8 +362,8 @@
             }
 
             if (points && points.material) {
-                points.material.opacity = 0.82;
-                points.material.size = 0.0075;
+                points.material.opacity = SYSTEM_CONFIG.model.pointOpacity;
+                points.material.size = SYSTEM_CONFIG.model.pointSize;
             }
 
             if (bloomPass) bloomPass.strength = 0.45;
@@ -358,7 +399,7 @@
         const uiRate = document.getElementById('display-rate');
         const uiStress = document.getElementById('display-stress');
 
-        fetch('chronicle_data.json')
+        fetch(SYSTEM_CONFIG.data.path)
             .then(response => {
                 if (!response.ok) throw new Error('Exchange data request failed');
                 return response.json();
@@ -498,9 +539,9 @@
                     exportFrameCount = 0;
                     virtualTime = Date.now(); 
                     renderer.setPixelRatio(1);
-                    renderer.setSize(2880, 1620, false);
-                    composer.setSize(2880, 1620);
-                    camera.aspect = 2880 / 1620;
+                    renderer.setSize(SYSTEM_CONFIG.export.width, SYSTEM_CONFIG.export.height, false);
+                    composer.setSize(SYSTEM_CONFIG.export.width, SYSTEM_CONFIG.export.height);
+                    camera.aspect = SYSTEM_CONFIG.export.width / SYSTEM_CONFIG.export.height;
                     camera.updateProjectionMatrix();
                     capturer = new CCapture({
                         format: 'jpg',
@@ -710,8 +751,8 @@
 
             if (points && points.material) {
                 const recognitionHold = 1 - THREE.MathUtils.clamp(currentAnxiety / RECOGNITION_HOLD_ANXIETY, 0, 1);
-                points.material.size = (0.0075 + recognitionHold * 0.0012) * (1 - endFade * 0.08);
-                points.material.opacity = (0.82 + recognitionHold * 0.10) * (1 - endFade * 0.22);
+                points.material.size = (SYSTEM_CONFIG.model.pointSize + recognitionHold * 0.0012) * (1 - endFade * 0.08);
+                points.material.opacity = (SYSTEM_CONFIG.model.pointOpacity + recognitionHold * 0.10) * (1 - endFade * 0.22);
             }
             pointFrameSkip = (pointFrameSkip + 1) % POINT_UPDATE_INTERVAL;
             if (points && points.geometry && points.geometry.attributes.basePosition && !motionPaused && pointFrameSkip === 0) {
@@ -790,7 +831,7 @@
                 capturer.capture(renderer.domElement);
                 exportFrameCount++;
                 // Extend export duration to ~60 seconds to fully cover one complete data cycle
-                if (exportFrameCount > 3600) {
+                if (exportFrameCount > SYSTEM_CONFIG.export.frames) {
                     capturer.stop(); capturer.save(); isExportMode = false;
                     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
                     renderer.setSize(window.innerWidth, window.innerHeight); composer.setSize(window.innerWidth, window.innerHeight);

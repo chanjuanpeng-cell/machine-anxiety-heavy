@@ -29,6 +29,13 @@ The reusable system structure is documented in [PROJECT_TEMPLATE.md](PROJECT_TEM
 - URL: https://machine-anxiety-git-visual-v2-chanjuanpeng-cells-projects.vercel.app
 - Purpose: builds on `sound-v2` with subtle directional point-cloud pressure.
 
+## Model Replacement V2
+
+- Branch: `model-replacement-v2`
+- URL: pending Vercel preview
+- Purpose: builds on `presentation-stability-v2` by grouping model, camera, pressure, data, and export settings into a reusable configuration layer.
+- Guide: [MODEL_REPLACEMENT_GUIDE.md](MODEL_REPLACEMENT_GUIDE.md)
+
 ## Working Rule
 
 Do not merge preview branches into `main` until the submitted version no longer needs to remain unchanged.

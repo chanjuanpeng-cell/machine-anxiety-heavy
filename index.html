@@ -95,12 +95,13 @@
         let virtualTime = 0; 
 
         // === 完整的音频系统变量 ===
-        let audioCtx, oscillator, gainNode, filterNode, machinePanner;
+        let audioCtx, oscillator, gainNode, filterNode, machinePanner, compressorNode, masterOutput;
         let roomNoiseSource, roomNoiseGain, roomFilter, roomPanner;
         let eventNoiseSource, eventNoiseGain, eventFilter, eventPanner;
         let subOscillator, subGainNode;
         let airNoiseSource, airNoiseGain, airFilter, airPanner;
         let criticalEventCooldown = 0;
+        let currentSoundMapping = { anxiety: 0, deviation: 0, velocity: 0, shock: 0, movement: 0 };
         let isAudioInitialized = false;
 
         let systemStarted = false;
@@ -333,6 +334,7 @@
             targetDataDistancePulse = 0;
             previousRateForCamera = null;
             previousRateForDeformation = null;
+            currentSoundMapping = { anxiety: 0, deviation: 0, velocity: 0, shock: 0, movement: 0 };
             pointFrameSkip = 0;
             cameraSmoothingReady = false;
             titleSequenceStart = virtualTime || Date.now();
@@ -346,6 +348,17 @@
         function startSystem() {
             if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             if (!isAudioInitialized) {
+                masterOutput = audioCtx.createGain();
+                masterOutput.gain.value = 0.82;
+                compressorNode = audioCtx.createDynamicsCompressor();
+                compressorNode.threshold.value = -18;
+                compressorNode.knee.value = 24;
+                compressorNode.ratio.value = 8;
+                compressorNode.attack.value = 0.006;
+                compressorNode.release.value = 0.28;
+                compressorNode.connect(masterOutput);
+                masterOutput.connect(audioCtx.destination);
+
                 oscillator = audioCtx.createOscillator();
                 oscillator.type = 'sawtooth';
                 subOscillator = audioCtx.createOscillator();
@@ -364,7 +377,7 @@
                 oscillator.connect(filterNode);
                 filterNode.connect(gainNode);
                 gainNode.connect(machinePanner);
-                machinePanner.connect(audioCtx.destination);
+                machinePanner.connect(compressorNode);
                 subOscillator.connect(subGainNode);
                 subGainNode.connect(machinePanner);
 
@@ -377,7 +390,7 @@
                 roomNoiseGain = audioCtx.createGain(); roomNoiseGain.gain.value = 0.014;
                 roomFilter = audioCtx.createBiquadFilter(); roomFilter.type = 'bandpass'; roomFilter.frequency.value = 420; roomFilter.Q.value = 0.8;
                 roomPanner = audioCtx.createStereoPanner(); roomPanner.pan.value = 0;
-                roomNoiseSource.connect(roomFilter); roomFilter.connect(roomNoiseGain); roomNoiseGain.connect(roomPanner); roomPanner.connect(audioCtx.destination);
+                roomNoiseSource.connect(roomFilter); roomFilter.connect(roomNoiseGain); roomNoiseGain.connect(roomPanner); roomPanner.connect(compressorNode);
                 roomNoiseSource.start();
 
                 // critical-event noise layer
@@ -388,7 +401,7 @@
                 eventFilter = audioCtx.createBiquadFilter(); eventFilter.type = 'bandpass'; eventFilter.frequency.value = 1800; eventFilter.Q.value = 1.2;
                 eventNoiseGain = audioCtx.createGain(); eventNoiseGain.gain.value = 0;
                 eventPanner = audioCtx.createStereoPanner(); eventPanner.pan.value = 0;
-                eventNoiseSource.connect(eventFilter); eventFilter.connect(eventNoiseGain); eventNoiseGain.connect(eventPanner); eventPanner.connect(audioCtx.destination);
+                eventNoiseSource.connect(eventFilter); eventFilter.connect(eventNoiseGain); eventNoiseGain.connect(eventPanner); eventPanner.connect(compressorNode);
                 eventNoiseSource.start();
 
                 // airy room layer
@@ -399,7 +412,7 @@
                 airFilter = audioCtx.createBiquadFilter(); airFilter.type = 'highpass'; airFilter.frequency.value = 1800;
                 airNoiseGain = audioCtx.createGain(); airNoiseGain.gain.value = 0.0;
                 airPanner = audioCtx.createStereoPanner(); airPanner.pan.value = 0;
-                airNoiseSource.connect(airFilter); airFilter.connect(airNoiseGain); airNoiseGain.connect(airPanner); airPanner.connect(audioCtx.destination);
+                airNoiseSource.connect(airFilter); airFilter.connect(airNoiseGain); airNoiseGain.connect(airPanner); airPanner.connect(compressorNode);
                 airNoiseSource.start();
                 
                 oscillator.start();
@@ -543,6 +556,7 @@
 
                     const mappedData = getMappedAnxiety(currentDayIndex);
                     targetAnxiety = mappedData.anxiety;
+                    currentSoundMapping = mappedData;
 
                     // Volatility and shock add sharper pressure changes on top of the continuous anxiety field.
                     targetDataDistancePulse = THREE.MathUtils.clamp(
@@ -585,37 +599,51 @@
                 const fadeGain = 1 - endFade;
                 const collapseThreshold = 0.72;
                 const collapseDrive = currentAnxiety > collapseThreshold ? (currentAnxiety - collapseThreshold) / (1 - collapseThreshold) : 0;
+                const soundDeviation = currentSoundMapping.deviation || 0;
+                const soundVelocity = currentSoundMapping.velocity || 0;
+                const soundShock = currentSoundMapping.shock || 0;
+                const driftPan = Math.sin(now * 0.00032) * 0.18;
 
-                const targetVolume = (0.014 + currentAnxiety * 0.078 + collapseDrive * 0.09) * fadeGain;
+                const targetVolume = (0.012 + soundDeviation * 0.036 + currentAnxiety * 0.045 + collapseDrive * 0.07) * fadeGain;
                 gainNode.gain.setTargetAtTime(targetVolume, audioCtx.currentTime, 0.10);
 
-                const targetFilter = (140 + currentAnxiety * 700 + collapseDrive * 500 + 80) * fadeGain;
+                const targetFilter = (180 + soundDeviation * 420 + soundVelocity * 520 + soundShock * 700 + collapseDrive * 380) * fadeGain;
                 filterNode.frequency.setTargetAtTime(targetFilter, audioCtx.currentTime, 0.10);
 
-                const targetPitch = 38 + currentAnxiety * 6 + collapseDrive * 7;
+                const targetPitch = 36 + soundDeviation * 4 + soundVelocity * 2 + collapseDrive * 5;
                 oscillator.frequency.setTargetAtTime(targetPitch, audioCtx.currentTime, 0.08);
+                if (machinePanner) machinePanner.pan.setTargetAtTime(THREE.MathUtils.clamp(driftPan + soundShock * 0.16, -0.55, 0.55), audioCtx.currentTime, 0.18);
 
                 if (subOscillator && subGainNode) {
-                    const subPitch = 27 + currentAnxiety * 2.5 + collapseDrive * 4;
-                    const subVolume = (0.014 + currentAnxiety * 0.03 + collapseDrive * 0.036) * fadeGain;
+                    const subPitch = 26 + soundDeviation * 2.5 + collapseDrive * 3.5;
+                    const subVolume = (0.010 + soundDeviation * 0.026 + collapseDrive * 0.034) * fadeGain;
                     subOscillator.frequency.setTargetAtTime(subPitch, audioCtx.currentTime, 0.12);
                     subGainNode.gain.setTargetAtTime(subVolume, audioCtx.currentTime, 0.14);
                 }
 
-                const roomNoiseTarget = (0.036 + currentAnxiety * 0.028 + collapseDrive * 0.038 + 0.012) * fadeGain;
+                const roomNoiseTarget = (0.030 + currentAnxiety * 0.020 + soundVelocity * 0.026 + collapseDrive * 0.030) * fadeGain;
                 roomNoiseGain.gain.setTargetAtTime(roomNoiseTarget, audioCtx.currentTime, 0.16);
+                roomFilter.frequency.setTargetAtTime(260 + soundDeviation * 260 + soundVelocity * 360, audioCtx.currentTime, 0.18);
+                if (roomPanner) roomPanner.pan.setTargetAtTime(-driftPan * 0.6, audioCtx.currentTime, 0.24);
+
+                if (airNoiseGain && airFilter) {
+                    const airNoiseTarget = (soundVelocity * 0.018 + soundShock * 0.035 + collapseDrive * 0.018) * fadeGain;
+                    airNoiseGain.gain.setTargetAtTime(airNoiseTarget, audioCtx.currentTime, 0.10);
+                    airFilter.frequency.setTargetAtTime(1500 + soundShock * 2600 + soundVelocity * 900, audioCtx.currentTime, 0.12);
+                    if (airPanner) airPanner.pan.setTargetAtTime(THREE.MathUtils.clamp(-driftPan + soundShock * 0.28, -0.75, 0.75), audioCtx.currentTime, 0.18);
+                }
 
                 const nowSec = audioCtx.currentTime;
-                if (currentAnxiety > 0.80 && nowSec > criticalEventCooldown && endFade < 0.7) {
-                    const burst = (0.006 + collapseDrive * 0.022 + Math.random() * 0.010) * fadeGain;
+                if ((soundShock > 0.16 || currentAnxiety > 0.82) && nowSec > criticalEventCooldown && endFade < 0.7) {
+                    const burst = (0.004 + soundShock * 0.024 + collapseDrive * 0.018 + Math.random() * 0.006) * fadeGain;
                     const burstPan = THREE.MathUtils.clamp((Math.random() * 2 - 1) * 0.95, -1, 1);
-                    eventFilter.frequency.setValueAtTime(600 + Math.random() * 1600, nowSec);
+                    eventFilter.frequency.setValueAtTime(650 + soundShock * 1800 + Math.random() * 900, nowSec);
                     if (eventPanner) eventPanner.pan.setValueAtTime(burstPan, nowSec);
                     eventNoiseGain.gain.cancelScheduledValues(nowSec);
                     eventNoiseGain.gain.setValueAtTime(0, nowSec);
                     eventNoiseGain.gain.linearRampToValueAtTime(burst, nowSec + 0.015);
-                    eventNoiseGain.gain.exponentialRampToValueAtTime(0.0001, nowSec + 0.24);
-                    criticalEventCooldown = nowSec + 0.24 + Math.random() * 0.34;
+                    eventNoiseGain.gain.exponentialRampToValueAtTime(0.0001, nowSec + 0.18 + soundShock * 0.16);
+                    criticalEventCooldown = nowSec + 0.22 + Math.random() * 0.38;
                 }
             }
 

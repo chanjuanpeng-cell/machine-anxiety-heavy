@@ -18,7 +18,7 @@ This is the stable submitted version. Experimental preview links are tracked in 
 
 ## Video
 
-👉 [Watch the final video](https://vimeo.com/1182278340)
+👉 [Watch the final video](https://vimeo.com/1188890187)
 
 ## Technical Notes
 

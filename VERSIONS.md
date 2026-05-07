@@ -32,7 +32,7 @@ The reusable system structure is documented in [PROJECT_TEMPLATE.md](PROJECT_TEM
 ## Model Replacement V2
 
 - Branch: `model-replacement-v2`
-- URL: pending Vercel preview
+- URL: https://machine-anxiety-git-model-re-8f1ad7-chanjuanpeng-cells-projects.vercel.app
 - Purpose: builds on `presentation-stability-v2` by grouping model, camera, pressure, data, and export settings into a reusable configuration layer.
 - Guide: [MODEL_REPLACEMENT_GUIDE.md](MODEL_REPLACEMENT_GUIDE.md)
 

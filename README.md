@@ -14,6 +14,8 @@ The project exists as a real-time WebGL system driven by historical GBP/CNY exch
 
 👉 [View the real-time version](https://machine-anxiety.vercel.app/)
 
+This is the stable submitted version. Experimental preview links are tracked in [VERSIONS.md](VERSIONS.md).
+
 ## Video
 
 👉 [Watch the final video](https://vimeo.com/1182278340)
@@ -27,6 +29,8 @@ The project exists as a real-time WebGL system driven by historical GBP/CNY exch
 * ~300k vertices  
 
 * Data-driven system using GBP/CNY exchange rates (JSON)  
+
+* Current preview branches test refined data mapping, layered sound, subtle point-cloud pressure, and loading safeguards.
 
 * Parameters mapped to:
 
@@ -44,11 +48,25 @@ The project exists as a real-time WebGL system driven by historical GBP/CNY exch
 
 ## Running Locally
 
-Download the repository and open:
+For the most reliable local preview, run a local server from the project folder:
 
-index.html
+```bash
+python3 -m http.server 5173 --bind 127.0.0.1
+```
 
-(For best performance, use Chrome or Safari.)
+Then open:
+
+```text
+http://127.0.0.1:5173/
+```
+
+Opening `index.html` directly may work in some browsers, but a local server is safer for loading the point-cloud and JSON assets. For best performance, use Chrome or Safari.
+
+## Version Management
+
+The `main` branch is kept as the stable submitted version while existing submissions are under review.
+
+Preview branches should remain separate until a new version is ready to replace the public production URL. See [VERSIONS.md](VERSIONS.md) for the current branch and deployment map.
 
 ## Data
 The dataset consists of historical GBP/CNY exchange-rate values recorded between September 2024 and April 2026.

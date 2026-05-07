@@ -39,7 +39,7 @@ The reusable system structure is documented in [PROJECT_TEMPLATE.md](PROJECT_TEM
 ## Export Pipeline V2
 
 - Branch: `export-pipeline-v2`
-- URL: pending Vercel preview
+- URL: https://machine-anxiety-git-export-p-ea9bad-chanjuanpeng-cells-projects.vercel.app
 - Purpose: builds on `model-replacement-v2` with clearer still-image and JPG-sequence export controls.
 - Guide: [EXPORT_PIPELINE_GUIDE.md](EXPORT_PIPELINE_GUIDE.md)
 

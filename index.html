@@ -243,8 +243,13 @@
                     overheadFullAnxiety: 0.86,
                     heightStart: 1.62,
                     heightFull: 0.92,
-                    ceilingDrift: 10.5,
-                    roomDeformBoost: 0.065
+                    ceilingDrift: 22.0,
+                    roomDeformBoost: 0.012,
+                    wallStartAnxiety: 0.48,
+                    wallFullAnxiety: 0.94,
+                    wallDrift: 12.0,
+                    blankBrightness: 0.50,
+                    blankChroma: 0.20
                 },
                 alphaTest: 0.08,
                 startCamera: new THREE.Vector3(-4.15, 0.72, 2.45),
@@ -1227,13 +1232,14 @@
                 const bases = points.geometry.attributes.basePosition;
                 const count = positions.count;
                 const time = now * 0.00115;
+                const colors = points.geometry.attributes.color;
 
-                // Classic deformation model restored from the earlier version.
-                // This is simpler and more continuous, which gives the point cloud a more natural organic movement.
+                // Heavy scan mode: keep the room legible. Exchange pressure now erases
+                // roof and blank wall surfaces instead of stretching the whole point cloud thin.
                 const visualStress = debugAnxiety;
-                let finalInstability = visualStress <= 0.55 ? (visualStress / 0.55) * 0.0065 : 0.0065 + Math.pow((visualStress - 0.55) / 0.45, 2) * 0.095;
-                const collapseDrive = visualStress > 0.72 ? (visualStress - 0.72) / 0.28 : 0;
-                const pressureDrive = THREE.MathUtils.clamp((visualStress - 0.22) / 0.78, 0, 1);
+                let finalInstability = (visualStress <= 0.55 ? (visualStress / 0.55) * 0.0065 : 0.0065 + Math.pow((visualStress - 0.55) / 0.45, 2) * 0.095) * 0.14;
+                const collapseDrive = 0;
+                const pressureDrive = THREE.MathUtils.clamp((visualStress - 0.22) / 0.78, 0, 1) * 0.35;
                 const pressurePulse = 0.78 + 0.22 * Math.sin(time * 2.4);
                 const erasureConfig = SYSTEM_CONFIG.model.ceilingErasure;
                 const ceilingErasure = erasureConfig && erasureConfig.enabled
@@ -1252,6 +1258,17 @@
                         ? THREE.MathUtils.clamp((by - ceilingCutHeight) / 0.55, 0, 1) * ceilingErasure
                         : 0;
                     const erasureHash = 0.5 + 0.5 * Math.sin(i * 17.371 + bx * 3.7 + bz * 2.9);
+                    const r = colors ? colors.getX(i) : 0.5;
+                    const g = colors ? colors.getY(i) : 0.5;
+                    const b = colors ? colors.getZ(i) : 0.5;
+                    const brightness = (r + g + b) / 3;
+                    const chroma = Math.max(r, g, b) - Math.min(r, g, b);
+                    const blankSurface = erasureConfig
+                        ? THREE.MathUtils.clamp((brightness - erasureConfig.blankBrightness) / 0.28, 0, 1) * THREE.MathUtils.clamp((erasureConfig.blankChroma - chroma) / erasureConfig.blankChroma, 0, 1)
+                        : 0;
+                    const shellWall = THREE.MathUtils.clamp((Math.abs(bx - 1.25) - 1.03) / 0.42, 0, 1) + THREE.MathUtils.clamp((Math.abs(bz) - 2.55) / 0.62, 0, 1);
+                    const wallHeight = THREE.MathUtils.clamp((by - 0.45) / 0.75, 0, 1) * THREE.MathUtils.clamp((2.55 - by) / 0.70, 0, 1);
+                    const blankWallWeight = THREE.MathUtils.clamp(shellWall, 0, 1) * wallHeight * blankSurface * wallErasure;
 
                     const dist = Math.sqrt(bx * bx + by * by + bz * bz);
                     const edgeWeight = Math.min(1, (1.0 - Math.exp(-dist * 1.45)) * 1.35);
@@ -1286,17 +1303,22 @@
                     targetY += pressureY * scanBreak * 0.075 + pressureWeight * fieldB * 0.018;
                     targetZ += pressureZ * scanBreak * 0.18 + pressureWeight * fieldC * 0.036;
 
-                    if (ceilingWeight > erasureHash * 0.72) {
-                        const lift = ceilingWeight * ceilingWeight * erasureConfig.ceilingDrift;
-                        targetX += fieldA * lift * 0.035 + pressureX * lift * 0.018;
-                        targetY += lift * (1.05 + erasureHash * 0.28);
-                        targetZ += fieldB * lift * 0.035 + pressureZ * lift * 0.018;
+                    const roofRemoval = THREE.MathUtils.clamp((ceilingWeight - erasureHash * 0.74) / 0.24, 0, 1);
+                    const wallRemoval = THREE.MathUtils.clamp((blankWallWeight - erasureHash * 0.82) / 0.18, 0, 1);
+                    const surfaceRemoval = Math.max(roofRemoval, wallRemoval);
+
+                    if (surfaceRemoval > 0.01) {
+                        const drift = surfaceRemoval * surfaceRemoval * (roofRemoval >= wallRemoval ? erasureConfig.ceilingDrift : erasureConfig.wallDrift);
+                        const side = signedNoise(i * 2.11 + 301.4);
+                        targetX += side * drift * 0.18 + pressureX * drift * 0.035;
+                        targetY += drift * (1.6 + erasureHash * 0.9);
+                        targetZ += signedNoise(i * 3.73 + 89.2) * drift * 0.18 + pressureZ * drift * 0.035;
                     } else if (roomExposure > 0.01) {
-                        const roomInteriorWeight = THREE.MathUtils.clamp((1.45 - by) / 1.95, 0, 1) * (1 - ceilingWeight);
-                        const roomShift = roomExposure * erasureConfig.roomDeformBoost * roomInteriorWeight * (0.6 + edgeWeight);
-                        targetX += fieldA * roomShift * 1.35 + pressureX * roomShift * 0.55;
-                        targetY += fieldB * roomShift * 0.45;
-                        targetZ += fieldC * roomShift * 1.15 + pressureZ * roomShift * 0.42;
+                        const roomInteriorWeight = THREE.MathUtils.clamp((1.45 - by) / 1.95, 0, 1) * (1 - ceilingWeight) * (1 - blankWallWeight);
+                        const roomShift = roomExposure * erasureConfig.roomDeformBoost * roomInteriorWeight * (0.35 + edgeWeight * 0.45);
+                        targetX += fieldA * roomShift * 0.70 + pressureX * roomShift * 0.25;
+                        targetY += fieldB * roomShift * 0.20;
+                        targetZ += fieldC * roomShift * 0.55 + pressureZ * roomShift * 0.20;
                     }
 
                     if (collapseDrive > 0) {

@@ -247,9 +247,14 @@
                     roomDeformBoost: 0.012,
                     wallStartAnxiety: 0.48,
                     wallFullAnxiety: 0.94,
-                    wallDrift: 12.0,
+                    wallDrift: 8.5,
                     blankBrightness: 0.50,
-                    blankChroma: 0.20
+                    blankChroma: 0.20,
+                    memoryRiseRate: 0.030,
+                    memoryFallRate: 0.007,
+                    memoryShockRate: 0.060,
+                    memoryLeakRate: 0.0015,
+                    highStressWave: 0.030
                 },
                 alphaTest: 0.08,
                 startCamera: new THREE.Vector3(-4.15, 0.72, 2.45),
@@ -501,6 +506,7 @@
         let dayDuration = 1600; 
         let targetAnxiety = 0;
         let currentAnxiety = 0;
+        let erosionMemory = 0;
         let deformationDrive = 0;
         let targetDeformationDrive = 0;
         let deformationImpulse = 0;
@@ -574,6 +580,7 @@
             shotStartTime = now;
             targetAnxiety = 0;
             currentAnxiety = 0;
+            erosionMemory = 0;
             deformationDrive = 0;
             targetDeformationDrive = 0;
             deformationImpulse = 0;
@@ -614,7 +621,8 @@
 
             const activeData = exchangeData[index];
             const previousData = exchangeData[Math.max(0, index - 1)];
-            const movement = Math.abs(activeData.rate - previousData.rate);
+            const direction = activeData.rate - previousData.rate;
+            const movement = Math.abs(direction);
 
             const deviation = THREE.MathUtils.clamp(Math.abs(activeData.rate - BASELINE_RATE) / RATE_RANGE_FOR_DEVIATION, 0, 1);
             const velocity = THREE.MathUtils.clamp(movement / RATE_RANGE_FOR_VELOCITY, 0, 1);
@@ -625,7 +633,7 @@
                 1
             );
 
-            return { anxiety, deviation, velocity, shock, movement };
+            return { anxiety, deviation, velocity, shock, movement, direction };
         }
 
         const uiDate = document.getElementById('display-date');
@@ -651,7 +659,7 @@
             lastDayChangeTime = virtualTime || Date.now();
             shotStartTime = lastDayChangeTime;
             dayDuration = 1600;
-            targetAnxiety = 0; currentAnxiety = 0;
+            targetAnxiety = 0; currentAnxiety = 0; erosionMemory = 0;
             deformationDrive = 0;
             targetDeformationDrive = 0;
             deformationImpulse = 0;
@@ -1251,6 +1259,20 @@
                 const roomExposure = erasureConfig
                     ? easeInOutSine(THREE.MathUtils.clamp((visualStress - erasureConfig.overheadStartAnxiety) / (erasureConfig.overheadFullAnxiety - erasureConfig.overheadStartAnxiety), 0, 1))
                     : 0;
+                if (erasureConfig) {
+                    const rateDirection = currentSoundMapping.direction || 0;
+                    const risingRatePressure = THREE.MathUtils.clamp(rateDirection / RATE_RANGE_FOR_VELOCITY, 0, 1);
+                    const fallingRatePressure = THREE.MathUtils.clamp(-rateDirection / RATE_RANGE_FOR_VELOCITY, 0, 1);
+                    const shockPressure = currentSoundMapping.shock || 0;
+                    const buildRate = erasureConfig.memoryRiseRate * visualStress + erasureConfig.memoryShockRate * shockPressure + erasureConfig.memoryRiseRate * risingRatePressure;
+                    const slowRate = erasureConfig.memoryFallRate * fallingRatePressure + 0.004 * visualStress;
+                    const leak = erasureConfig.memoryLeakRate * (1 - visualStress) * (1 - shockPressure);
+                    erosionMemory = THREE.MathUtils.clamp(erosionMemory + (buildRate + slowRate - leak) * dtSec, 0, 1);
+                }
+                const roofErosion = erasureConfig ? THREE.MathUtils.clamp(erosionMemory * 1.32 + Math.pow(visualStress, 3) * 0.10, 0, 1) : 0;
+                const wallErosion = erasureConfig ? THREE.MathUtils.clamp((erosionMemory - 0.18) * 0.78 + Math.pow(visualStress, 3) * 0.055, 0, 1) : 0;
+                const highStressWave = erasureConfig ? THREE.MathUtils.clamp((visualStress - 0.76) / 0.24, 0, 1) : 0;
+
                 for (let i = 0; i < count; i++) {
                     const bx = bases.getX(i), by = bases.getY(i), bz = bases.getZ(i);
                     const px = positions.getX(i), py = positions.getY(i), pz = positions.getZ(i);
@@ -1268,7 +1290,7 @@
                         : 0;
                     const shellWall = THREE.MathUtils.clamp((Math.abs(bx - 1.25) - 1.03) / 0.42, 0, 1) + THREE.MathUtils.clamp((Math.abs(bz) - 2.55) / 0.62, 0, 1);
                     const wallHeight = THREE.MathUtils.clamp((by - 0.45) / 0.75, 0, 1) * THREE.MathUtils.clamp((2.55 - by) / 0.70, 0, 1);
-                    const blankWallWeight = THREE.MathUtils.clamp(shellWall, 0, 1) * wallHeight * blankSurface * wallErasure;
+                    const blankWallWeight = THREE.MathUtils.clamp(shellWall, 0, 1) * wallHeight * blankSurface * wallErosion;
 
                     const dist = Math.sqrt(bx * bx + by * by + bz * bz);
                     const edgeWeight = Math.min(1, (1.0 - Math.exp(-dist * 1.45)) * 1.35);
@@ -1303,16 +1325,26 @@
                     targetY += pressureY * scanBreak * 0.075 + pressureWeight * fieldB * 0.018;
                     targetZ += pressureZ * scanBreak * 0.18 + pressureWeight * fieldC * 0.036;
 
-                    const roofRemoval = THREE.MathUtils.clamp((ceilingWeight - erasureHash * 0.74) / 0.24, 0, 1);
-                    const wallRemoval = THREE.MathUtils.clamp((blankWallWeight - erasureHash * 0.82) / 0.18, 0, 1);
+                    if (highStressWave > 0.01) {
+                        const wave = Math.sin(bx * 3.4 + bz * 2.1 + time * 3.0) * Math.cos(by * 2.8 - time * 2.1);
+                        const waveAmount = highStressWave * highStressWave * erasureConfig.highStressWave * (0.5 + edgeWeight * 0.7);
+                        targetX += fieldA * waveAmount + pressureX * waveAmount * 0.45;
+                        targetY += wave * waveAmount * 0.45;
+                        targetZ += fieldB * waveAmount + pressureZ * waveAmount * 0.45;
+                    }
+
+                    const roofRegion = 0.08 + erasureHash * 0.70 + 0.10 * Math.sin(bx * 1.9 + bz * 1.2);
+                    const wallRegion = 0.22 + erasureHash * 0.66 + 0.12 * Math.sin(bz * 1.6 + by * 2.1);
+                    const roofRemoval = THREE.MathUtils.clamp((roofErosion - roofRegion) / 0.20, 0, 1) * THREE.MathUtils.clamp(ceilingWeight * 1.4, 0, 1);
+                    const wallRemoval = THREE.MathUtils.clamp((wallErosion - wallRegion) / 0.22, 0, 1) * THREE.MathUtils.clamp(blankWallWeight * 1.3, 0, 1);
                     const surfaceRemoval = Math.max(roofRemoval, wallRemoval);
 
                     if (surfaceRemoval > 0.01) {
                         const drift = surfaceRemoval * surfaceRemoval * (roofRemoval >= wallRemoval ? erasureConfig.ceilingDrift : erasureConfig.wallDrift);
                         const side = signedNoise(i * 2.11 + 301.4);
-                        targetX += side * drift * 0.18 + pressureX * drift * 0.035;
-                        targetY += drift * (1.6 + erasureHash * 0.9);
-                        targetZ += signedNoise(i * 3.73 + 89.2) * drift * 0.18 + pressureZ * drift * 0.035;
+                        targetX += side * drift * 0.10 + pressureX * drift * 0.020;
+                        targetY += drift * (0.95 + erasureHash * 0.55);
+                        targetZ += signedNoise(i * 3.73 + 89.2) * drift * 0.10 + pressureZ * drift * 0.020;
                     } else if (roomExposure > 0.01) {
                         const roomInteriorWeight = THREE.MathUtils.clamp((1.45 - by) / 1.95, 0, 1) * (1 - ceilingWeight) * (1 - blankWallWeight);
                         const roomShift = roomExposure * erasureConfig.roomDeformBoost * roomInteriorWeight * (0.35 + edgeWeight * 0.45);

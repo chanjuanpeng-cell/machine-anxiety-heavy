@@ -141,16 +141,17 @@
 
         const SYSTEM_CONFIG = {
             model: {
-                label: 'ROOM SCAN',
-                path: 'room_scan_test2.ply',
-                pointSize: 0.0075,
-                pointOpacity: 0.82,
-                pointColor: 0xd0d0d0,
+                label: 'DORM SCAN',
+                path: 'models/scaniverse_dorm_bbox_clean_500k.ply',
+                pointSize: 0.0062,
+                pointOpacity: 0.88,
+                pointColor: 0xffffff,
+                useVertexColors: true,
                 alphaTest: 0.12,
-                startCamera: new THREE.Vector3(-0.599, 0.323, 2.251),
-                startTarget: new THREE.Vector3(0.125, 0.225, -0.06),
-                pressureOrigin: new THREE.Vector3(-1.15, 0.22, 1.35),
-                pressureRadius: 2.65
+                startCamera: new THREE.Vector3(-0.35, 0.42, 5.2),
+                startTarget: new THREE.Vector3(0.12, 0.12, 0.0),
+                pressureOrigin: new THREE.Vector3(0.8, 0.05, 1.2),
+                pressureRadius: 3.1
             },
             data: {
                 path: 'chronicle_data.json'
@@ -262,6 +263,7 @@
                     alphaTest: modelConfig.alphaTest,
                     transparent: true,
                     opacity: modelConfig.pointOpacity,
+                    vertexColors: modelConfig.useVertexColors,
                     depthWrite: false
                 });
                 points = new THREE.Points(geometry, material);

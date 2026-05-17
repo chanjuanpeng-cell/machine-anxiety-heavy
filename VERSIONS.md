@@ -43,6 +43,13 @@ The reusable system structure is documented in [PROJECT_TEMPLATE.md](PROJECT_TEM
 - Purpose: builds on `model-replacement-v2` with clearer still-image and JPG-sequence export controls.
 - Guide: [EXPORT_PIPELINE_GUIDE.md](EXPORT_PIPELINE_GUIDE.md)
 
+## Color Pointcloud Model Test V2
+
+- Branch: `color-pointcloud-model-test-v2`
+- URL: pending Vercel preview
+- Purpose: tests a cleaned Scaniverse dorm-room color point cloud inside the current Machine Anxiety system.
+- Guide: [COLOR_POINTCLOUD_MODEL_TEST.md](COLOR_POINTCLOUD_MODEL_TEST.md)
+
 ## Working Rule
 
 Do not merge preview branches into `main` until the submitted version no longer needs to remain unchanged.

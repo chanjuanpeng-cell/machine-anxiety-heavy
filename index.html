@@ -197,7 +197,9 @@
         let capturer = null;
         let isExportMode = false;
         let exportFrameCount = 0;
-        let virtualTime = 0; 
+        let virtualTime = 0;
+        const exportCompositeCanvas = document.createElement('canvas');
+        const exportCompositeCtx = exportCompositeCanvas.getContext('2d');
 
         // === 完整的音频系统变量 ===
         let audioCtx, oscillator, gainNode, filterNode, machinePanner, compressorNode, masterOutput;
@@ -312,6 +314,65 @@
             ctx.fillText('A private interior destabilised by', width * 0.5, height * 0.535);
             ctx.fillText('GBP/CNY exchange-rate fluctuations', width * 0.5, height * 0.575);
             ctx.restore();
+        }
+
+        function getSpatialConditionLabel() {
+            if (currentAnxiety > 0.8) return 'COMPROMISED';
+            if (currentAnxiety > 0.6) return 'UNSTABLE';
+            if (currentAnxiety > 0.2) return 'REDUCED';
+            return 'NOMINAL';
+        }
+
+        function drawExportDataPanel(ctx, width, height) {
+            if (!exchangeData.length) return;
+            const displayData = exchangeData[currentDayIndex] || exchangeData[0];
+            const scale = width / 1920;
+            const panelWidth = Math.round(360 * scale);
+            const panelHeight = Math.round(94 * scale);
+            const x = Math.round((width - panelWidth) / 2);
+            const y = Math.round(height - panelHeight - 44 * scale);
+            const padX = Math.round(26 * scale);
+            const rowGap = Math.round(25 * scale);
+            const labelX = x + padX;
+            const valueX = x + Math.round(190 * scale);
+            const firstY = y + Math.round(28 * scale);
+
+            ctx.save();
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.50)';
+            ctx.fillRect(x, y, panelWidth, panelHeight);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.045)';
+            ctx.fillRect(x, y, panelWidth, 1);
+            ctx.font = `${Math.round(12 * scale)}px monospace`;
+            ctx.textBaseline = 'middle';
+            ctx.textAlign = 'left';
+
+            const rows = [
+                ['DATE', displayData.date || '--'],
+                ['GBP/CNY', `£1 = ¥${Number(displayData.rate || 0).toFixed(2)}`],
+                ['SPATIAL CONDITION', getSpatialConditionLabel()]
+            ];
+
+            rows.forEach((row, index) => {
+                const rowY = firstY + rowGap * index;
+                ctx.fillStyle = 'rgba(150, 150, 150, 0.82)';
+                ctx.fillText(row[0], labelX, rowY);
+                ctx.fillStyle = row[1] === 'COMPROMISED' ? 'rgba(255, 82, 82, 0.95)' : 'rgba(230, 230, 230, 0.94)';
+                ctx.fillText(row[1], valueX, rowY);
+            });
+            ctx.restore();
+        }
+
+        function composeExportFrame(drawPanel = true) {
+            const source = renderer.domElement;
+            if (exportCompositeCanvas.width !== source.width || exportCompositeCanvas.height !== source.height) {
+                exportCompositeCanvas.width = source.width;
+                exportCompositeCanvas.height = source.height;
+            }
+            exportCompositeCtx.clearRect(0, 0, exportCompositeCanvas.width, exportCompositeCanvas.height);
+            exportCompositeCtx.drawImage(source, 0, 0);
+            drawCinematicTitleOverlay(exportCompositeCtx, exportCompositeCanvas.width, exportCompositeCanvas.height, virtualTime || Date.now());
+            if (drawPanel) drawExportDataPanel(exportCompositeCtx, exportCompositeCanvas.width, exportCompositeCanvas.height);
+            return exportCompositeCanvas;
         }
 
         const controls = new OrbitControls(camera, renderer.domElement);
@@ -1010,7 +1071,7 @@
             setExportStatus('CAPTURING STILL');
             prepareExportViewport(exportConfig.stillWidth, exportConfig.stillHeight);
             composer.render();
-            renderer.domElement.toBlob((blob) => {
+            composeExportFrame(true).toBlob((blob) => {
                 if (!blob) {
                     restorePreviewViewport();
                     return;
@@ -1153,10 +1214,9 @@
                 currentAnxiety += (targetAnxiety - currentAnxiety) * (targetAnxiety > currentAnxiety ? 0.03 : 0.01);
             }
 
-            if (currentAnxiety > 0.8) uiStress.innerHTML = `<span class="warning">COMPROMISED</span>`;
-            else if (currentAnxiety > 0.6) uiStress.innerText = "UNSTABLE";
-            else if (currentAnxiety > 0.2) uiStress.innerText = "REDUCED";
-            else uiStress.innerText = "NOMINAL";
+            const conditionLabel = getSpatialConditionLabel();
+            if (conditionLabel === 'COMPROMISED') uiStress.innerHTML = `<span class="warning">COMPROMISED</span>`;
+            else uiStress.innerText = conditionLabel;
 
             // 🚨【关键修改4】彻底删除了原有的 "camera.position.lerpVectors" 强制锁死推进代码
             // 现在摄影机的移动权力 100% 交还给了自转控制器 OrbitControls
@@ -1372,11 +1432,9 @@
             }
 
             composer.render();
-            const overlayCtx = renderer.domElement.getContext('2d');
-            if (overlayCtx && titleSequenceStart) drawCinematicTitleOverlay(overlayCtx, renderer.domElement.width, renderer.domElement.height, now);
 
             if (isExportMode && capturer) {
-                capturer.capture(renderer.domElement);
+                capturer.capture(composeExportFrame(true));
                 exportFrameCount++;
                 const progress = Math.min(100, Math.round((exportFrameCount / SYSTEM_CONFIG.export.sequenceFrames) * 100));
                 setExportStatus(`EXPORTING JPG SEQUENCE ${progress}%`);

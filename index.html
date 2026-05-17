@@ -81,6 +81,69 @@
             pointer-events: none;
             display: none;
         }
+        #debug-panel {
+            position: absolute;
+            top: 18px;
+            right: 18px;
+            z-index: 30;
+            width: 300px;
+            max-height: calc(100vh - 36px);
+            overflow: auto;
+            background: rgba(0, 0, 0, 0.72);
+            color: #cfcfcf;
+            padding: 14px;
+            box-sizing: border-box;
+            font-size: 11px;
+            letter-spacing: 0.2px;
+            backdrop-filter: blur(6px);
+            display: none;
+        }
+        #debug-panel.visible { display: block; }
+        #debug-panel h2 {
+            margin: 0 0 10px;
+            font-size: 11px;
+            font-weight: normal;
+            color: #f0f0f0;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+        .debug-row {
+            display: grid;
+            grid-template-columns: 94px 1fr 42px;
+            gap: 8px;
+            align-items: center;
+            margin: 7px 0;
+        }
+        .debug-row label { color: #8a8a8a; }
+        .debug-row input { width: 100%; }
+        .debug-value { color: #f0f0f0; text-align: right; }
+        .debug-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+            margin-top: 12px;
+        }
+        .debug-actions button {
+            background: #171717;
+            color: #cfcfcf;
+            border: 1px solid #333;
+            font: inherit;
+            padding: 7px 6px;
+            cursor: pointer;
+        }
+        #debug-output {
+            margin-top: 12px;
+            width: 100%;
+            min-height: 120px;
+            box-sizing: border-box;
+            background: #050505;
+            color: #d7d7d7;
+            border: 1px solid #262626;
+            font: 10px monospace;
+            padding: 8px;
+            resize: vertical;
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -100,6 +163,20 @@
     </div>
     <div id="load-status">LOADING ROOM SCAN</div>
     <div id="export-status"></div>
+    <div id="debug-panel">
+        <h2>Debug Controls</h2>
+        <div id="debug-controls"></div>
+        <div class="debug-actions">
+            <button id="debug-side">Side View</button>
+            <button id="debug-overhead">Overhead</button>
+            <button id="debug-capture">Capture View</button>
+            <button id="debug-lock">Lock View</button>
+            <button id="debug-pause">Pause</button>
+            <button id="debug-copy">Copy Values</button>
+            <button id="debug-hide">Hide</button>
+        </div>
+        <textarea id="debug-output" readonly></textarea>
+    </div>
 
     <script type="importmap">
         { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
@@ -134,6 +211,7 @@
 
         let systemStarted = false;
         let motionPaused = false;
+        let playbackPaused = false;
         let lastFrameTime = performance.now();
         const TITLE_HOLD_MS = 2200;
         const TITLE_FADE_MS = 1400;
@@ -143,15 +221,31 @@
             model: {
                 label: 'DORM SCAN',
                 path: 'models/scaniverse_dorm_bbox_clean_500k.ply',
-                pointSize: 0.0062,
-                pointOpacity: 0.88,
+                pointSize: 0.0088,
+                pointOpacity: 0.92,
                 pointColor: 0xffffff,
                 useVertexColors: true,
-                alphaTest: 0.12,
-                startCamera: new THREE.Vector3(-0.35, 0.42, 5.2),
-                startTarget: new THREE.Vector3(0.12, 0.12, 0.0),
-                pressureOrigin: new THREE.Vector3(0.8, 0.05, 1.2),
-                pressureRadius: 3.1
+                axisRemap: 'scaniverseRoom',
+                viewMode: 'ceilingErasure',
+                crop: { enabled: false },
+                ceilingErasure: {
+                    enabled: true,
+                    startAnxiety: 0.30,
+                    fullAnxiety: 0.62,
+                    overheadStartAnxiety: 0.52,
+                    overheadFullAnxiety: 0.86,
+                    heightStart: 1.62,
+                    heightFull: 0.92,
+                    ceilingDrift: 10.5,
+                    roomDeformBoost: 0.065
+                },
+                alphaTest: 0.08,
+                startCamera: new THREE.Vector3(-4.15, 0.72, 2.45),
+                startTarget: new THREE.Vector3(0.25, 0.34, 0.08),
+                overheadCamera: new THREE.Vector3(0.12, 4.85, 0.72),
+                overheadTarget: new THREE.Vector3(0.22, -0.08, 0.02),
+                pressureOrigin: new THREE.Vector3(0.75, 0.2, 1.0),
+                pressureRadius: 3.9
             },
             data: {
                 path: 'chronicle_data.json'
@@ -251,8 +345,52 @@
             controls.update();
         }
 
+        function remapScaniverseRoomAxes(geometry) {
+            const positions = geometry.attributes.position;
+            for (let i = 0; i < positions.count; i++) {
+                const sourceX = positions.getX(i);
+                const sourceY = positions.getY(i);
+                const sourceZ = positions.getZ(i);
+                positions.setXYZ(i, sourceX, sourceZ, -sourceY);
+            }
+            positions.needsUpdate = true;
+            geometry.computeBoundingBox();
+        }
+
+        function cropPointCloudGeometry(geometry, cropConfig) {
+            if (!cropConfig || !cropConfig.enabled) return geometry;
+
+            const positions = geometry.attributes.position;
+            const colors = geometry.attributes.color;
+            const keptPositions = [];
+            const keptColors = [];
+
+            for (let i = 0; i < positions.count; i++) {
+                const x = positions.getX(i);
+                const y = positions.getY(i);
+                const z = positions.getZ(i);
+                if (cropConfig.minX !== undefined && x < cropConfig.minX) continue;
+                if (cropConfig.maxX !== undefined && x > cropConfig.maxX) continue;
+                if (cropConfig.minY !== undefined && y < cropConfig.minY) continue;
+                if (cropConfig.maxY !== undefined && y > cropConfig.maxY) continue;
+                if (cropConfig.minZ !== undefined && z < cropConfig.minZ) continue;
+                if (cropConfig.maxZ !== undefined && z > cropConfig.maxZ) continue;
+
+                keptPositions.push(x, y, z);
+                if (colors) keptColors.push(colors.getX(i), colors.getY(i), colors.getZ(i));
+            }
+
+            const cropped = new THREE.BufferGeometry();
+            cropped.setAttribute('position', new THREE.BufferAttribute(new Float32Array(keptPositions), 3));
+            if (colors) cropped.setAttribute('color', new THREE.BufferAttribute(new Float32Array(keptColors), 3));
+            cropped.computeBoundingBox();
+            return cropped;
+        }
+
         function loadPointCloudModel(modelConfig) {
             new PLYLoader().load(modelConfig.path, function (geometry) {
+                if (modelConfig.axisRemap === 'scaniverseRoom') remapScaniverseRoomAxes(geometry);
+                geometry = cropPointCloudGeometry(geometry, modelConfig.crop);
                 const basePositions = new Float32Array(geometry.attributes.position.array);
                 geometry.setAttribute('basePosition', new THREE.BufferAttribute(basePositions, 3));
 
@@ -549,6 +687,165 @@
             setTimeout(() => { introOverlay.style.display = 'none'; }, 950);
         }, { once: true });
 
+        const DEBUG_STATE = {
+            cameraX: SYSTEM_CONFIG.model.startCamera.x,
+            cameraY: SYSTEM_CONFIG.model.startCamera.y,
+            cameraZ: SYSTEM_CONFIG.model.startCamera.z,
+            targetX: SYSTEM_CONFIG.model.startTarget.x,
+            targetY: SYSTEM_CONFIG.model.startTarget.y,
+            targetZ: SYSTEM_CONFIG.model.startTarget.z,
+            pointSize: SYSTEM_CONFIG.model.pointSize,
+            opacity: SYSTEM_CONFIG.model.pointOpacity,
+            ceilingStart: SYSTEM_CONFIG.model.ceilingErasure.startAnxiety,
+            ceilingFull: SYSTEM_CONFIG.model.ceilingErasure.fullAnxiety,
+            overheadStart: SYSTEM_CONFIG.model.ceilingErasure.overheadStartAnxiety,
+            overheadFull: SYSTEM_CONFIG.model.ceilingErasure.overheadFullAnxiety,
+            ceilingDrift: SYSTEM_CONFIG.model.ceilingErasure.ceilingDrift,
+            roomDeform: SYSTEM_CONFIG.model.ceilingErasure.roomDeformBoost,
+            previewAnxiety: -1,
+            manualCamera: true
+        };
+
+        const DEBUG_CONTROLS = [
+            ['cameraX', -8, 8, 0.01], ['cameraY', -1, 8, 0.01], ['cameraZ', -8, 8, 0.01],
+            ['targetX', -3, 3, 0.01], ['targetY', -1, 4, 0.01], ['targetZ', -4, 4, 0.01],
+            ['pointSize', 0.002, 0.024, 0.0002], ['opacity', 0.2, 1, 0.01],
+            ['ceilingStart', 0, 1, 0.01], ['ceilingFull', 0, 1, 0.01],
+            ['overheadStart', 0, 1, 0.01], ['overheadFull', 0, 1, 0.01],
+            ['ceilingDrift', 0, 16, 0.1], ['roomDeform', 0, 0.18, 0.001],
+            ['previewAnxiety', -1, 1, 0.01]
+        ];
+
+        function applyDebugState() {
+            SYSTEM_CONFIG.model.pointSize = DEBUG_STATE.pointSize;
+            SYSTEM_CONFIG.model.pointOpacity = DEBUG_STATE.opacity;
+            SYSTEM_CONFIG.model.ceilingErasure.startAnxiety = DEBUG_STATE.ceilingStart;
+            SYSTEM_CONFIG.model.ceilingErasure.fullAnxiety = Math.max(DEBUG_STATE.ceilingFull, DEBUG_STATE.ceilingStart + 0.01);
+            SYSTEM_CONFIG.model.ceilingErasure.overheadStartAnxiety = DEBUG_STATE.overheadStart;
+            SYSTEM_CONFIG.model.ceilingErasure.overheadFullAnxiety = Math.max(DEBUG_STATE.overheadFull, DEBUG_STATE.overheadStart + 0.01);
+            SYSTEM_CONFIG.model.ceilingErasure.ceilingDrift = DEBUG_STATE.ceilingDrift;
+            SYSTEM_CONFIG.model.ceilingErasure.roomDeformBoost = DEBUG_STATE.roomDeform;
+
+            if (points && points.material) {
+                points.material.size = DEBUG_STATE.pointSize;
+                points.material.opacity = DEBUG_STATE.opacity;
+            }
+
+            if (DEBUG_STATE.manualCamera) {
+                camera.position.set(DEBUG_STATE.cameraX, DEBUG_STATE.cameraY, DEBUG_STATE.cameraZ);
+                controls.target.set(DEBUG_STATE.targetX, DEBUG_STATE.targetY, DEBUG_STATE.targetZ);
+                controls.update();
+            }
+        }
+
+        function captureCurrentView() {
+            Object.assign(DEBUG_STATE, {
+                cameraX: camera.position.x,
+                cameraY: camera.position.y,
+                cameraZ: camera.position.z,
+                targetX: controls.target.x,
+                targetY: controls.target.y,
+                targetZ: controls.target.z,
+                manualCamera: true
+            });
+            buildDebugPanel();
+            applyDebugState();
+        }
+
+        function getDebugValuesText() {
+            return JSON.stringify({
+                cameraX: Number(DEBUG_STATE.cameraX.toFixed(4)),
+                cameraY: Number(DEBUG_STATE.cameraY.toFixed(4)),
+                cameraZ: Number(DEBUG_STATE.cameraZ.toFixed(4)),
+                targetX: Number(DEBUG_STATE.targetX.toFixed(4)),
+                targetY: Number(DEBUG_STATE.targetY.toFixed(4)),
+                targetZ: Number(DEBUG_STATE.targetZ.toFixed(4)),
+                pointSize: Number(DEBUG_STATE.pointSize.toFixed(4)),
+                opacity: Number(DEBUG_STATE.opacity.toFixed(3)),
+                ceilingStart: Number(DEBUG_STATE.ceilingStart.toFixed(3)),
+                ceilingFull: Number(DEBUG_STATE.ceilingFull.toFixed(3)),
+                overheadStart: Number(DEBUG_STATE.overheadStart.toFixed(3)),
+                overheadFull: Number(DEBUG_STATE.overheadFull.toFixed(3)),
+                ceilingDrift: Number(DEBUG_STATE.ceilingDrift.toFixed(3)),
+                roomDeform: Number(DEBUG_STATE.roomDeform.toFixed(4)),
+                previewAnxiety: Number(DEBUG_STATE.previewAnxiety.toFixed(3)),
+                manualCamera: DEBUG_STATE.manualCamera
+            }, null, 2);
+        }
+
+        function showDebugValues() {
+            const output = getDebugValuesText();
+            const outputBox = document.getElementById('debug-output');
+            if (outputBox) {
+                outputBox.value = output;
+                outputBox.style.display = 'block';
+            }
+            navigator.clipboard?.writeText(output);
+            console.log(output);
+        }
+
+        function buildDebugPanel() {
+            const panel = document.getElementById('debug-panel');
+            const holder = document.getElementById('debug-controls');
+            if (!panel || !holder) return;
+            holder.innerHTML = '';
+            DEBUG_CONTROLS.forEach(([key, min, max, step]) => {
+                const row = document.createElement('div');
+                row.className = 'debug-row';
+                const label = document.createElement('label');
+                label.textContent = key;
+                const input = document.createElement('input');
+                input.type = 'range';
+                input.min = min;
+                input.max = max;
+                input.step = step;
+                input.value = DEBUG_STATE[key];
+                const value = document.createElement('span');
+                value.className = 'debug-value';
+                value.textContent = Number(DEBUG_STATE[key]).toFixed(step < 0.01 ? 4 : 2);
+                input.addEventListener('input', () => {
+                    DEBUG_STATE[key] = Number(input.value);
+                    value.textContent = Number(DEBUG_STATE[key]).toFixed(step < 0.01 ? 4 : 2);
+                    applyDebugState();
+                });
+                row.append(label, input, value);
+                holder.appendChild(row);
+            });
+
+            document.getElementById('debug-side').addEventListener('click', () => {
+                Object.assign(DEBUG_STATE, { cameraX: -4.15, cameraY: 0.72, cameraZ: 2.45, targetX: 0.25, targetY: 0.34, targetZ: 0.08, manualCamera: true });
+                buildDebugPanel();
+                applyDebugState();
+            });
+            document.getElementById('debug-overhead').addEventListener('click', () => {
+                Object.assign(DEBUG_STATE, { cameraX: 0.12, cameraY: 4.85, cameraZ: 0.72, targetX: 0.22, targetY: -0.08, targetZ: 0.02, manualCamera: true });
+                buildDebugPanel();
+                applyDebugState();
+            });
+            document.getElementById('debug-capture').addEventListener('click', () => captureCurrentView());
+            document.getElementById('debug-lock').addEventListener('click', () => {
+                captureCurrentView();
+                DEBUG_STATE.manualCamera = true;
+                showDebugValues();
+            });
+            document.getElementById('debug-pause').addEventListener('click', () => togglePlaybackPause());
+            document.getElementById('debug-copy').addEventListener('click', () => showDebugValues());
+            document.getElementById('debug-hide').addEventListener('click', () => panel.classList.remove('visible'));
+        }
+
+        buildDebugPanel();
+
+        function updatePauseButton() {
+            const button = document.getElementById('debug-pause');
+            if (button) button.textContent = playbackPaused ? 'Resume' : 'Pause';
+        }
+
+        function togglePlaybackPause() {
+            playbackPaused = !playbackPaused;
+            motionPaused = playbackPaused;
+            updatePauseButton();
+        }
+
         const exportStatus = document.getElementById('export-status');
 
         function setExportStatus(message) {
@@ -649,6 +946,14 @@
         // Export controls: S saves one high-resolution still, K starts/stops a JPG sequence.
         window.addEventListener('keydown', (event) => {
             const key = event.key.toLowerCase();
+            if (key === 'd') {
+                event.preventDefault();
+                document.getElementById('debug-panel')?.classList.toggle('visible');
+            }
+            if (key === ' ') {
+                event.preventDefault();
+                togglePlaybackPause();
+            }
             if (key === 's') {
                 event.preventDefault();
                 captureStillImage();
@@ -665,7 +970,7 @@
 
             if (isExportMode) {
                 virtualTime += (1000 / 60);
-            } else {
+            } else if (!playbackPaused) {
                 virtualTime = Date.now();
             }
             const now = virtualTime;
@@ -690,32 +995,49 @@
             const loopFadeProgress = activeCycleProgress <= LOOP_FADE_START
                 ? 0
                 : easeInOutSine(THREE.MathUtils.clamp((activeCycleProgress - LOOP_FADE_START) / (LOOP_RESET_AT - LOOP_FADE_START), 0, 1));
+            const debugAnxiety = DEBUG_STATE.previewAnxiety >= 0 ? DEBUG_STATE.previewAnxiety : currentAnxiety;
 
             // Camera-model relationship restored from the simulated-data version.
             // The camera keeps orbiting around a stable target, while anxiety pushes the view closer.
             const breathDrift = Math.sin(now * 0.0005) * 0.6;
             const anxietyPush = currentAnxiety * 2.3;
-            const targetDistance = 4.8 - anxietyPush + breathDrift;
+            const isCeilingErasureView = SYSTEM_CONFIG.model.viewMode === 'ceilingErasure';
+            if (isCeilingErasureView) {
+                const erasureConfig = SYSTEM_CONFIG.model.ceilingErasure;
+                const overheadBlend = easeInOutSine(THREE.MathUtils.clamp((debugAnxiety - erasureConfig.overheadStartAnxiety) / (erasureConfig.overheadFullAnxiety - erasureConfig.overheadStartAnxiety), 0, 1));
+                const breath = Math.sin(now * 0.00032) * 0.045;
+                const orbitAngle = START_ORBIT_ANGLE - 1.05 + now * 0.000045;
+                const externalCamera = new THREE.Vector3(
+                    PUSH_START_TARGET.x + Math.sin(orbitAngle) * 4.75,
+                    PUSH_START_CAMERA.y + breath,
+                    PUSH_START_TARGET.z + Math.cos(orbitAngle) * 4.75
+                );
+                if (!DEBUG_STATE.manualCamera) {
+                    camera.position.lerpVectors(externalCamera, SYSTEM_CONFIG.model.overheadCamera, overheadBlend);
+                    controls.target.lerpVectors(PUSH_START_TARGET, SYSTEM_CONFIG.model.overheadTarget, overheadBlend);
+                }
+                controls.autoRotate = false;
+                controls.update();
+            } else {
+                const targetDistance = 4.8 - anxietyPush + breathDrift;
+                const offset = camera.position.clone().sub(controls.target);
+                if (offset.length() > 0.1) {
+                    const currentDist = offset.length();
+                    const newDist = currentDist + (targetDistance - currentDist) * 0.02;
+                    offset.setLength(Math.max(MIN_VIEW_DISTANCE, newDist));
+                    camera.position.copy(controls.target.clone().add(offset));
+                }
 
-            const offset = camera.position.clone().sub(controls.target);
-            if (offset.length() > 0.1) {
-                const currentDist = offset.length();
-                const newDist = currentDist + (targetDistance - currentDist) * 0.02;
-                offset.setLength(Math.max(MIN_VIEW_DISTANCE, newDist));
-                camera.position.copy(controls.target.clone().add(offset));
+                controls.target.lerp(PUSH_START_TARGET, 0.035);
+                controls.autoRotate = true;
+                controls.autoRotateSpeed = -1.25 - (currentAnxiety * 4.0);
+                controls.update();
             }
-
-            // Keep the model as the visual anchor. Do not drift the target away during the real-data cycle.
-            controls.target.lerp(PUSH_START_TARGET, 0.035);
-
-            controls.autoRotate = true;
-            controls.autoRotateSpeed = -1.25 - (currentAnxiety * 4.0);
-            controls.update();
 
             if (systemStarted && exchangeData.length > 0) {
                 const systemElapsed = shotStartTime ? (now - shotStartTime) : 0;
 
-                if (systemElapsed >= SYSTEM_DELAY_MS) {
+                if (!playbackPaused && systemElapsed >= SYSTEM_DELAY_MS) {
                     const progressIndex = getDataIndexFromProgress(activeCycleProgress);
                     if (progressIndex !== currentDayIndex) {
                         currentDayIndex = progressIndex;
@@ -838,15 +1160,29 @@
 
                 // Classic deformation model restored from the earlier version.
                 // This is simpler and more continuous, which gives the point cloud a more natural organic movement.
-                const visualStress = currentAnxiety;
+                const visualStress = debugAnxiety;
                 let finalInstability = visualStress <= 0.55 ? (visualStress / 0.55) * 0.0065 : 0.0065 + Math.pow((visualStress - 0.55) / 0.45, 2) * 0.095;
                 const collapseDrive = visualStress > 0.72 ? (visualStress - 0.72) / 0.28 : 0;
                 const pressureDrive = THREE.MathUtils.clamp((visualStress - 0.22) / 0.78, 0, 1);
                 const pressurePulse = 0.78 + 0.22 * Math.sin(time * 2.4);
+                const erasureConfig = SYSTEM_CONFIG.model.ceilingErasure;
+                const ceilingErasure = erasureConfig && erasureConfig.enabled
+                    ? easeInOutSine(THREE.MathUtils.clamp((visualStress - erasureConfig.startAnxiety) / (erasureConfig.fullAnxiety - erasureConfig.startAnxiety), 0, 1))
+                    : 0;
+                const ceilingCutHeight = erasureConfig
+                    ? THREE.MathUtils.lerp(erasureConfig.heightStart, erasureConfig.heightFull, ceilingErasure)
+                    : Infinity;
+                const roomExposure = erasureConfig
+                    ? easeInOutSine(THREE.MathUtils.clamp((visualStress - erasureConfig.overheadStartAnxiety) / (erasureConfig.overheadFullAnxiety - erasureConfig.overheadStartAnxiety), 0, 1))
+                    : 0;
 
                 for (let i = 0; i < count; i++) {
                     const bx = bases.getX(i), by = bases.getY(i), bz = bases.getZ(i);
                     const px = positions.getX(i), py = positions.getY(i), pz = positions.getZ(i);
+                    const ceilingWeight = erasureConfig
+                        ? THREE.MathUtils.clamp((by - ceilingCutHeight) / 0.55, 0, 1) * ceilingErasure
+                        : 0;
+                    const erasureHash = 0.5 + 0.5 * Math.sin(i * 17.371 + bx * 3.7 + bz * 2.9);
 
                     const dist = Math.sqrt(bx * bx + by * by + bz * bz);
                     const edgeWeight = Math.min(1, (1.0 - Math.exp(-dist * 1.45)) * 1.35);
@@ -880,6 +1216,19 @@
                     targetX += pressureX * scanBreak * 0.22 + pressureWeight * fieldA * 0.038;
                     targetY += pressureY * scanBreak * 0.075 + pressureWeight * fieldB * 0.018;
                     targetZ += pressureZ * scanBreak * 0.18 + pressureWeight * fieldC * 0.036;
+
+                    if (ceilingWeight > erasureHash * 0.72) {
+                        const lift = ceilingWeight * ceilingWeight * erasureConfig.ceilingDrift;
+                        targetX += fieldA * lift * 0.035 + pressureX * lift * 0.018;
+                        targetY += lift * (1.05 + erasureHash * 0.28);
+                        targetZ += fieldB * lift * 0.035 + pressureZ * lift * 0.018;
+                    } else if (roomExposure > 0.01) {
+                        const roomInteriorWeight = THREE.MathUtils.clamp((1.45 - by) / 1.95, 0, 1) * (1 - ceilingWeight);
+                        const roomShift = roomExposure * erasureConfig.roomDeformBoost * roomInteriorWeight * (0.6 + edgeWeight);
+                        targetX += fieldA * roomShift * 1.35 + pressureX * roomShift * 0.55;
+                        targetY += fieldB * roomShift * 0.45;
+                        targetZ += fieldC * roomShift * 1.15 + pressureZ * roomShift * 0.42;
+                    }
 
                     if (collapseDrive > 0) {
                         const isDetached = Math.abs(Math.sin(i * 91.173 + bx * 3.1 + bz * 2.7)) > (0.82 - collapseDrive * 0.34 - edgeWeight * 0.18 - pressureWeight * 0.12);

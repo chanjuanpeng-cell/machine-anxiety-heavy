@@ -268,11 +268,11 @@
                 path: 'chronicle_data.json'
             },
             export: {
-                sequenceWidth: 2880,
-                sequenceHeight: 1620,
-                sequenceFrames: 3600,
-                sequenceFramerate: 60,
-                sequenceName: 'Machine_Anxiety_FinalFlow_HQ',
+                sequenceWidth: 1920,
+                sequenceHeight: 1080,
+                sequenceFrames: 1800,
+                sequenceFramerate: 30,
+                sequenceName: 'Machine_Anxiety_Lumen_Submission_1080p30',
                 stillWidth: 3840,
                 stillHeight: 2160,
                 stillName: 'Machine_Anxiety_Still'
@@ -1051,13 +1051,14 @@
         function animate() {
             requestAnimationFrame(animate);
 
+            const exportFrameDuration = 1000 / SYSTEM_CONFIG.export.sequenceFramerate;
             if (isExportMode) {
-                virtualTime += (1000 / 60);
+                virtualTime += exportFrameDuration;
             } else if (!playbackPaused) {
                 virtualTime = Date.now();
             }
             const now = virtualTime;
-            const dtSec = isExportMode ? (1/60) : Math.min(0.05, (performance.now() - lastFrameTime) / 1000);
+            const dtSec = isExportMode ? (1 / SYSTEM_CONFIG.export.sequenceFramerate) : Math.min(0.05, (performance.now() - lastFrameTime) / 1000);
             lastFrameTime = performance.now();
             // ==========================================
             // 🎬 Classic orbit-controls camera relation restored

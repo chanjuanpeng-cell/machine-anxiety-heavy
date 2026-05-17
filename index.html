@@ -219,14 +219,21 @@
 
         const SYSTEM_CONFIG = {
             model: {
-                label: 'DORM SCAN',
-                path: 'models/scaniverse_dorm_bbox_clean_500k.ply',
-                pointSize: 0.0088,
+                label: 'DORM HEAVY CLEAN',
+                path: 'models/scaniverse_room_clean_585k.ply',
+                pointSize: 0.0076,
                 pointOpacity: 0.92,
                 pointColor: 0xffffff,
                 useVertexColors: true,
                 axisRemap: 'scaniverseRoom',
                 viewMode: 'ceilingErasure',
+                irregularity: {
+                    enabled: true,
+                    jitter: 0.011,
+                    duplicateRatio: 0.38,
+                    duplicateJitter: 0.018,
+                    colorVariation: 0.12
+                },
                 crop: { enabled: false },
                 ceilingErasure: {
                     enabled: true,
@@ -387,10 +394,73 @@
             return cropped;
         }
 
+        function deterministicNoise(seed) {
+            const value = Math.sin(seed * 12.9898) * 43758.5453;
+            return value - Math.floor(value);
+        }
+
+        function signedNoise(seed) {
+            return deterministicNoise(seed) * 2 - 1;
+        }
+
+        function irregularizePointCloudGeometry(geometry, config) {
+            if (!config || !config.enabled) return geometry;
+
+            const sourcePositions = geometry.attributes.position;
+            const sourceColors = geometry.attributes.color;
+            const jitter = config.jitter || 0;
+            const duplicateRatio = config.duplicateRatio || 0;
+            const duplicateJitter = config.duplicateJitter || jitter;
+            const colorVariation = config.colorVariation || 0;
+            const positions = [];
+            const colors = sourceColors ? [] : null;
+
+            for (let i = 0; i < sourcePositions.count; i++) {
+                const x = sourcePositions.getX(i);
+                const y = sourcePositions.getY(i);
+                const z = sourcePositions.getZ(i);
+                const jx = signedNoise(i * 3.17 + 11.1) * jitter;
+                const jy = signedNoise(i * 4.91 + 23.7) * jitter * 0.55;
+                const jz = signedNoise(i * 6.43 + 41.9) * jitter;
+
+                positions.push(x + jx, y + jy, z + jz);
+                if (sourceColors) {
+                    const shade = 1 + signedNoise(i * 2.73 + 8.2) * colorVariation;
+                    colors.push(
+                        THREE.MathUtils.clamp(sourceColors.getX(i) * shade, 0, 1),
+                        THREE.MathUtils.clamp(sourceColors.getY(i) * shade, 0, 1),
+                        THREE.MathUtils.clamp(sourceColors.getZ(i) * shade, 0, 1)
+                    );
+                }
+
+                if (deterministicNoise(i * 9.31 + 5.4) < duplicateRatio) {
+                    const dx = signedNoise(i * 7.13 + 101.2) * duplicateJitter;
+                    const dy = signedNoise(i * 5.57 + 77.7) * duplicateJitter * 0.65;
+                    const dz = signedNoise(i * 8.89 + 13.5) * duplicateJitter;
+                    positions.push(x + dx, y + dy, z + dz);
+                    if (sourceColors) {
+                        const shade = 0.76 + deterministicNoise(i * 4.41 + 19.8) * 0.22;
+                        colors.push(
+                            THREE.MathUtils.clamp(sourceColors.getX(i) * shade, 0, 1),
+                            THREE.MathUtils.clamp(sourceColors.getY(i) * shade, 0, 1),
+                            THREE.MathUtils.clamp(sourceColors.getZ(i) * shade, 0, 1)
+                        );
+                    }
+                }
+            }
+
+            const irregular = new THREE.BufferGeometry();
+            irregular.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
+            if (colors) irregular.setAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 3));
+            irregular.computeBoundingBox();
+            return irregular;
+        }
+
         function loadPointCloudModel(modelConfig) {
             new PLYLoader().load(modelConfig.path, function (geometry) {
                 if (modelConfig.axisRemap === 'scaniverseRoom') remapScaniverseRoomAxes(geometry);
                 geometry = cropPointCloudGeometry(geometry, modelConfig.crop);
+                geometry = irregularizePointCloudGeometry(geometry, modelConfig.irregularity);
                 const basePositions = new Float32Array(geometry.attributes.position.array);
                 geometry.setAttribute('basePosition', new THREE.BufferAttribute(basePositions, 3));
 
@@ -1175,7 +1245,6 @@
                 const roomExposure = erasureConfig
                     ? easeInOutSine(THREE.MathUtils.clamp((visualStress - erasureConfig.overheadStartAnxiety) / (erasureConfig.overheadFullAnxiety - erasureConfig.overheadStartAnxiety), 0, 1))
                     : 0;
-
                 for (let i = 0; i < count; i++) {
                     const bx = bases.getX(i), by = bases.getY(i), bz = bases.getZ(i);
                     const px = positions.getX(i), py = positions.getY(i), pz = positions.getZ(i);

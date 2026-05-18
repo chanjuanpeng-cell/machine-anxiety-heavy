@@ -278,7 +278,13 @@
                     memoryFallRate: 0.007,
                     memoryShockRate: 0.060,
                     memoryLeakRate: 0.0015,
-                    highStressWave: 0.030
+                    highStressWave: 0.030,
+                    erosionGate: {
+                        enabled: true,
+                        startProgress: 0.30,
+                        fullProgress: 0.50,
+                        memoryBoost: 1.35
+                    }
                 },
                 alphaTest: 0.08,
                 startCamera: new THREE.Vector3(-4.15, 0.72, 2.45),
@@ -759,14 +765,24 @@
             const erasureConfig = SYSTEM_CONFIG.model.ceilingErasure;
             if (!erasureConfig || exchangeData.length < 2) return 0;
 
+            const gate = erasureConfig.erosionGate || { enabled: false };
+            const gateStart = gate.enabled ? gate.startProgress : 0;
+            const gateFull = gate.enabled ? gate.fullProgress : 0;
+            const gateBlend = gate.enabled ? getThresholdBlend(progress, gateStart, gateFull) : 1;
+            if (gate.enabled && gateBlend <= 0) return 0;
+
             const segmentCount = exchangeData.length - 1;
             const segmentSeconds = (SYSTEM_CONFIG.export.dataRunMs / 1000) / segmentCount;
             const exactSegment = THREE.MathUtils.clamp(progress, 0, 1) * segmentCount;
+            const gateStartSegment = THREE.MathUtils.clamp(gateStart, 0, 1) * segmentCount;
             let memory = 0;
 
             for (let segment = 0; segment < segmentCount; segment++) {
-                const portion = THREE.MathUtils.clamp(exactSegment - segment, 0, 1);
-                if (portion <= 0) break;
+                const portionBeforeGate = gate.enabled ? THREE.MathUtils.clamp(gateStartSegment - segment, 0, 1) : 0;
+                const portionAtProgress = THREE.MathUtils.clamp(exactSegment - segment, 0, 1);
+                const portion = Math.max(0, portionAtProgress - portionBeforeGate);
+                if (portion <= 0 && segment > exactSegment) break;
+                if (portion <= 0) continue;
 
                 const mapped = getMappedAnxiety(segment + 1);
                 const stress = forcedStress === null ? mapped.anxiety : forcedStress;
@@ -779,7 +795,7 @@
                 memory = THREE.MathUtils.clamp(memory + (buildRate + slowRate - leak) * segmentSeconds * portion, 0, 1);
             }
 
-            return memory;
+            return THREE.MathUtils.clamp(memory * gateBlend * (gate.memoryBoost || 1), 0, 1);
         }
 
         const uiDate = document.getElementById('display-date');

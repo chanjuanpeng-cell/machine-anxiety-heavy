@@ -278,18 +278,7 @@
                     memoryFallRate: 0.007,
                     memoryShockRate: 0.060,
                     memoryLeakRate: 0.0015,
-                    highStressWave: 0.030,
-                    semanticErosion: {
-                        enabled: true,
-                        objectStart: 0.10,
-                        objectFull: 0.42,
-                        structureStart: 0.56,
-                        structureFull: 0.92,
-                        objectDrift: 2.7,
-                        objectScatter: 1.45,
-                        structureDriftScale: 0.55,
-                        breathingOnlyStress: 0.22
-                    }
+                    highStressWave: 0.030
                 },
                 alphaTest: 0.08,
                 startCamera: new THREE.Vector3(-4.15, 0.72, 2.45),
@@ -1517,14 +1506,8 @@
                         DEBUG_STATE.previewAnxiety >= 0 ? visualStress : null
                     );
                 }
-                const semanticConfig = erasureConfig && erasureConfig.semanticErosion && erasureConfig.semanticErosion.enabled
-                    ? erasureConfig.semanticErosion
-                    : null;
-                const objectErosion = semanticConfig ? getThresholdBlend(erosionMemory, semanticConfig.objectStart, semanticConfig.objectFull) : 0;
-                const structureErosion = semanticConfig ? getThresholdBlend(erosionMemory, semanticConfig.structureStart, semanticConfig.structureFull) : erosionMemory;
-                const structuralStress = THREE.MathUtils.clamp((visualStress - 0.50) / 0.50, 0, 1);
-                const roofErosion = erasureConfig ? THREE.MathUtils.clamp(structureErosion * 1.20 + Math.pow(structuralStress, 3) * 0.08, 0, 1) : 0;
-                const wallErosion = erasureConfig ? THREE.MathUtils.clamp(structureErosion * 0.72 + Math.pow(structuralStress, 3) * 0.06, 0, 1) : 0;
+                const roofErosion = erasureConfig ? THREE.MathUtils.clamp(erosionMemory * 1.32 + Math.pow(visualStress, 3) * 0.10, 0, 1) : 0;
+                const wallErosion = erasureConfig ? THREE.MathUtils.clamp((erosionMemory - 0.18) * 0.78 + Math.pow(visualStress, 3) * 0.055, 0, 1) : 0;
                 const highStressWave = erasureConfig ? THREE.MathUtils.clamp((visualStress - 0.76) / 0.24, 0, 1) : 0;
 
                 for (let i = 0; i < count; i++) {
@@ -1545,14 +1528,6 @@
                     const shellWall = THREE.MathUtils.clamp((Math.abs(bx - 1.25) - 1.03) / 0.42, 0, 1) + THREE.MathUtils.clamp((Math.abs(bz) - 2.55) / 0.62, 0, 1);
                     const wallHeight = THREE.MathUtils.clamp((by - 0.45) / 0.75, 0, 1) * THREE.MathUtils.clamp((2.55 - by) / 0.70, 0, 1);
                     const blankWallWeight = THREE.MathUtils.clamp(shellWall, 0, 1) * wallHeight * blankSurface * wallErosion;
-                    const shellWeight = THREE.MathUtils.clamp(shellWall, 0, 1);
-                    const belowCeiling = 1 - THREE.MathUtils.clamp((by - 1.42) / 0.45, 0, 1);
-                    const aboveFloor = THREE.MathUtils.clamp((by + 0.32) / 0.95, 0, 1);
-                    const objectHeightBand = aboveFloor * belowCeiling;
-                    const objectMaterial = THREE.MathUtils.clamp(chroma * 1.85 + (0.58 - brightness) * 0.55, 0, 1);
-                    const interiorObjectWeight = semanticConfig
-                        ? objectErosion * objectHeightBand * (1 - ceilingWeight) * (1 - blankSurface * 0.78) * (1 - shellWeight * 0.62) * (0.38 + objectMaterial * 0.72)
-                        : 0;
 
                     const dist = Math.sqrt(bx * bx + by * by + bz * bz);
                     const edgeWeight = Math.min(1, (1.0 - Math.exp(-dist * 1.45)) * 1.35);
@@ -1587,15 +1562,6 @@
                     targetY += pressureY * scanBreak * 0.075 + pressureWeight * fieldB * 0.018;
                     targetZ += pressureZ * scanBreak * 0.18 + pressureWeight * fieldC * 0.036;
 
-                    if (interiorObjectWeight > 0.01) {
-                        const localRelease = THREE.MathUtils.clamp((objectErosion - (0.10 + erasureHash * 0.55)) / 0.26, 0, 1);
-                        const objectDrift = localRelease * interiorObjectWeight * (semanticConfig.objectDrift || 2.4);
-                        const scatter = localRelease * localRelease * interiorObjectWeight * (semanticConfig.objectScatter || 1.2);
-                        targetX += fieldA * objectDrift * 0.42 + radialX * scatter * 0.72 + signedNoise(i * 4.31 + 17.0) * scatter * 0.28;
-                        targetY += Math.abs(fieldB) * objectDrift * 0.32 + (0.18 + erasureHash * 0.65) * scatter;
-                        targetZ += fieldC * objectDrift * 0.40 + radialZ * scatter * 0.68 + signedNoise(i * 5.73 + 71.0) * scatter * 0.28;
-                    }
-
                     if (highStressWave > 0.01) {
                         const wave = Math.sin(bx * 3.4 + bz * 2.1 + time * 3.0) * Math.cos(by * 2.8 - time * 2.1);
                         const waveAmount = highStressWave * highStressWave * erasureConfig.highStressWave * (0.5 + edgeWeight * 0.7);
@@ -1611,7 +1577,7 @@
                     const surfaceRemoval = Math.max(roofRemoval, wallRemoval);
 
                     if (surfaceRemoval > 0.01) {
-                        const drift = surfaceRemoval * surfaceRemoval * (roofRemoval >= wallRemoval ? erasureConfig.ceilingDrift : erasureConfig.wallDrift) * (semanticConfig ? semanticConfig.structureDriftScale : 1);
+                        const drift = surfaceRemoval * surfaceRemoval * (roofRemoval >= wallRemoval ? erasureConfig.ceilingDrift : erasureConfig.wallDrift);
                         const side = signedNoise(i * 2.11 + 301.4);
                         targetX += side * drift * 0.10 + pressureX * drift * 0.020;
                         targetY += drift * (0.95 + erasureHash * 0.55);

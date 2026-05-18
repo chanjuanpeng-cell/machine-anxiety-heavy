@@ -296,6 +296,9 @@
                 sequenceFrames: 1800,
                 sequenceFramerate: 30,
                 sequenceName: 'Machine_Anxiety_Lumen_Submission_1080p30',
+                introHoldMs: 3000,
+                dataRunMs: 52000,
+                outroHoldMs: 5000,
                 stillWidth: 3840,
                 stillHeight: 2160,
                 stillName: 'Machine_Anxiety_Still'
@@ -392,7 +395,9 @@
             exportCompositeCtx.clearRect(0, 0, exportCompositeCanvas.width, exportCompositeCanvas.height);
             exportCompositeCtx.drawImage(source, 0, 0);
             drawCinematicTitleOverlay(exportCompositeCtx, exportCompositeCanvas.width, exportCompositeCanvas.height, virtualTime || Date.now());
-            if (drawPanel) drawExportDataPanel(exportCompositeCtx, exportCompositeCanvas.width, exportCompositeCanvas.height);
+            if (drawPanel && shouldDrawExportPanel(virtualTime || Date.now())) {
+                drawExportDataPanel(exportCompositeCtx, exportCompositeCanvas.width, exportCompositeCanvas.height);
+            }
             return exportCompositeCanvas;
         }
 
@@ -650,10 +655,35 @@
             return -(Math.cos(Math.PI * THREE.MathUtils.clamp(t, 0, 1)) - 1) / 2;
         }
 
-        function getCycleProgress(now) {
+        function getPlaybackElapsed(now) {
             if (!systemStarted || !shotStartTime) return 0;
-            const elapsed = Math.max(0, now - shotStartTime - SYSTEM_DELAY_MS);
-            return THREE.MathUtils.clamp(elapsed / CYCLE_DURATION_MS, 0, 1);
+            if (isExportMode) {
+                return exportFrameCount * (1000 / SYSTEM_CONFIG.export.sequenceFramerate);
+            }
+            return Math.max(0, now - shotStartTime);
+        }
+
+        function getPlaybackTimelineState(now) {
+            const elapsed = getPlaybackElapsed(now);
+            const intro = SYSTEM_CONFIG.export.introHoldMs;
+            const dataRun = SYSTEM_CONFIG.export.dataRunMs;
+            const outro = SYSTEM_CONFIG.export.outroHoldMs;
+            const total = intro + dataRun + outro;
+            const clamped = THREE.MathUtils.clamp(elapsed, 0, total);
+            const dataElapsed = THREE.MathUtils.clamp(clamped - intro, 0, dataRun);
+            return {
+                elapsed: clamped,
+                total,
+                progress: dataRun > 0 ? dataElapsed / dataRun : 0,
+                showPanel: clamped >= intro && clamped < intro + dataRun,
+                inIntro: clamped < intro,
+                inOutro: clamped >= intro + dataRun,
+                isComplete: elapsed >= total
+            };
+        }
+
+        function shouldDrawExportPanel(now = virtualTime || Date.now()) {
+            return getPlaybackTimelineState(now).showPanel;
         }
 
         function restartCycle(now) {
@@ -1131,7 +1161,7 @@
             capturer = null;
             isExportMode = false;
             restorePreviewViewport();
-            document.getElementById('ui-container').style.display = 'block';
+            document.getElementById('ui-container').style.display = shouldDrawExportPanel() ? 'block' : 'none';
             setExportStatus('EXPORT SAVED');
             setTimeout(() => setExportStatus(''), 2200);
             console.log('PRODUCTION: EXPORT FINISHED');
@@ -1201,12 +1231,12 @@
             // while anxiety only changed the camera distance along the same viewing line.
             // This keeps the camera-model relationship more physical and less mechanical.
 
-            // Classic breathing dolly: distant view at rest, closer view under pressure.
-            const cycleProgress = getCycleProgress(now);
-            if (systemStarted && cycleProgress >= LOOP_RESET_AT) {
+            let playbackTimeline = getPlaybackTimelineState(now);
+            if (!isExportMode && systemStarted && playbackTimeline.isComplete) {
                 restartCycle(now);
+                playbackTimeline = getPlaybackTimelineState(now);
             }
-            const activeCycleProgress = getCycleProgress(now);
+            const activeCycleProgress = playbackTimeline.progress;
             const endPullProgress = activeCycleProgress <= END_PULL_START
                 ? 0
                 : easeInOutSine(THREE.MathUtils.clamp((activeCycleProgress - END_PULL_START) / (LOOP_RESET_AT - END_PULL_START), 0, 1));
@@ -1253,22 +1283,31 @@
             }
 
             if (systemStarted && exchangeData.length > 0) {
-                const systemElapsed = shotStartTime ? (now - shotStartTime) : 0;
+                const uiContainer = document.getElementById('ui-container');
+                if (uiContainer && !isExportMode) {
+                    uiContainer.style.display = playbackTimeline.showPanel ? 'block' : 'none';
+                }
 
-                if (!playbackPaused && systemElapsed >= SYSTEM_DELAY_MS) {
-                    const progressIndex = getDataIndexFromProgress(activeCycleProgress);
+                if (!playbackPaused) {
+                    const progressIndex = playbackTimeline.inIntro
+                        ? 0
+                        : playbackTimeline.inOutro
+                            ? exchangeData.length - 1
+                            : getDataIndexFromProgress(activeCycleProgress);
                     if (progressIndex !== currentDayIndex) {
                         currentDayIndex = progressIndex;
                         lastDayChangeTime = now;
                     }
 
                     const mappedData = getMappedAnxiety(currentDayIndex);
-                    targetAnxiety = mappedData.anxiety;
-                    currentSoundMapping = mappedData;
+                    targetAnxiety = playbackTimeline.inIntro ? 0 : mappedData.anxiety;
+                    currentSoundMapping = playbackTimeline.inIntro
+                        ? { anxiety: 0, deviation: 0, velocity: 0, shock: 0, movement: 0, direction: 0 }
+                        : mappedData;
 
                     // Volatility and shock add sharper pressure changes on top of the continuous anxiety field.
                     targetDataDistancePulse = THREE.MathUtils.clamp(
-                        mappedData.movement * 1.45 + mappedData.velocity * 0.10 + mappedData.shock * 0.18,
+                        currentSoundMapping.movement * 1.45 + currentSoundMapping.velocity * 0.10 + currentSoundMapping.shock * 0.18,
                         0,
                         0.32
                     );
@@ -1278,9 +1317,14 @@
                     // The simulated-data version felt stronger because it did not damp the model before the ending.
                 }
 
-                const displayData = exchangeData[currentDayIndex];
-                uiDate.innerText = displayData.date;
-                uiRate.innerText = "£1 = ¥" + displayData.rate.toFixed(2);
+                if (playbackTimeline.inIntro) {
+                    uiDate.innerText = 'SYSTEM STANDBY';
+                    uiRate.innerText = '--';
+                } else {
+                    const displayData = exchangeData[currentDayIndex];
+                    uiDate.innerText = displayData.date;
+                    uiRate.innerText = "£1 = ¥" + displayData.rate.toFixed(2);
+                }
             }
 
             if (!motionPaused) {
@@ -1511,7 +1555,7 @@
                 exportFrameCount++;
                 const progress = Math.min(100, Math.round((exportFrameCount / SYSTEM_CONFIG.export.sequenceFrames) * 100));
                 setExportStatus(`EXPORTING JPG SEQUENCE ${progress}%`);
-                if (exportFrameCount > SYSTEM_CONFIG.export.sequenceFrames) finishSequenceExport();
+                if (exportFrameCount >= SYSTEM_CONFIG.export.sequenceFrames) finishSequenceExport();
             }
         }
 

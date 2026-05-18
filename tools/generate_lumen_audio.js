@@ -9,6 +9,9 @@ const OUT_PATH = path.join(OUT_DIR, 'Machine_Anxiety_Lumen_Submission_1080p30.wa
 
 const SAMPLE_RATE = 48000;
 const DURATION_SEC = 60;
+const INTRO_SEC = 3;
+const DATA_SEC = 52;
+const OUTRO_SEC = 5;
 const CHANNELS = 2;
 const BASELINE_RATE = 9.00;
 const RATE_RANGE_FOR_DEVIATION = 0.72;
@@ -95,46 +98,52 @@ let hpNoise = 0;
 
 for (let i = 0; i < samples; i++) {
   const t = i / SAMPLE_RATE;
-  const progress = clamp(t / DURATION_SEC);
+  const progress = clamp((t - INTRO_SEC) / DATA_SEC);
+  const dataActive = smoothstep(INTRO_SEC, INTRO_SEC + 1.5, t);
+  const outroHold = t >= INTRO_SEC + DATA_SEC ? 1 : 0;
   const m = mappedDataAt(data, progress);
 
-  if (m.index !== lastIndex) {
+  if (dataActive > 0 && m.index !== lastIndex) {
     impulse = Math.max(impulse, m.shock * 0.9 + m.velocity * 0.18);
     lastIndex = m.index;
   }
 
-  const rising = clamp(m.direction / RATE_RANGE_FOR_VELOCITY);
-  const falling = clamp(-m.direction / RATE_RANGE_FOR_VELOCITY);
-  memory = clamp(memory + (m.anxiety * 0.022 + rising * 0.026 + m.shock * 0.048 + falling * 0.005 - (1 - m.anxiety) * 0.0012) / SAMPLE_RATE);
+  const activeAnxiety = m.anxiety * dataActive;
+  const activeDeviation = m.deviation * dataActive;
+  const activeVelocity = m.velocity * dataActive;
+  const activeShock = m.shock * dataActive;
+  const rising = clamp(m.direction / RATE_RANGE_FOR_VELOCITY) * dataActive;
+  const falling = clamp(-m.direction / RATE_RANGE_FOR_VELOCITY) * dataActive;
+  memory = clamp(memory + (activeAnxiety * 0.022 + rising * 0.026 + activeShock * 0.048 + falling * 0.005 - (1 - activeAnxiety) * 0.0012) / SAMPLE_RATE);
 
-  const fadeIn = smoothstep(0, 4, t);
+  const fadeIn = smoothstep(0, INTRO_SEC + 2, t);
   const fadeOut = 1 - smoothstep(DURATION_SEC - 5, DURATION_SEC, t);
   const fade = fadeIn * fadeOut;
 
-  lowPhase += (2 * Math.PI * (28 + m.deviation * 8 + memory * 10)) / SAMPLE_RATE;
-  machinePhase += (2 * Math.PI * (43 + m.velocity * 14 + m.shock * 20)) / SAMPLE_RATE;
-  airPhase += (2 * Math.PI * (0.06 + m.anxiety * 0.18)) / SAMPLE_RATE;
+  lowPhase += (2 * Math.PI * (28 + activeDeviation * 8 + memory * 10)) / SAMPLE_RATE;
+  machinePhase += (2 * Math.PI * (43 + activeVelocity * 14 + activeShock * 20)) / SAMPLE_RATE;
+  airPhase += (2 * Math.PI * (0.06 + activeAnxiety * 0.18 + outroHold * 0.02)) / SAMPLE_RATE;
 
   const rawNoise = hashNoise(i * 0.37 + Math.floor(t * 60) * 19.17);
   lpNoise += (rawNoise - lpNoise) * 0.015;
   hpNoise = rawNoise - lpNoise;
   lastNoise += (hpNoise - lastNoise) * (0.18 + m.shock * 0.22);
 
-  const low = Math.sin(lowPhase) * (0.055 + memory * 0.11 + m.deviation * 0.055);
-  const machine = (Math.sin(machinePhase) + 0.45 * Math.sin(machinePhase * 2.01)) * (0.018 + m.velocity * 0.055 + m.shock * 0.035);
-  const air = lastNoise * (0.012 + m.velocity * 0.045 + m.shock * 0.09 + memory * 0.015);
+  const low = Math.sin(lowPhase) * (0.055 + memory * 0.11 + activeDeviation * 0.055);
+  const machine = (Math.sin(machinePhase) + 0.45 * Math.sin(machinePhase * 2.01)) * (0.018 + activeVelocity * 0.055 + activeShock * 0.035);
+  const air = lastNoise * (0.012 + activeVelocity * 0.045 + activeShock * 0.09 + memory * 0.015);
   const roomBreath = Math.sin(2 * Math.PI * (0.095 + memory * 0.06) * t) * (0.025 + memory * 0.055);
 
   impulse *= Math.exp(-1 / (SAMPLE_RATE * (0.12 + m.shock * 0.18)));
-  const event = impulse * hashNoise(i * 7.7) * (0.10 + m.shock * 0.18);
+  const event = impulse * hashNoise(i * 7.7) * (0.10 + activeShock * 0.18);
 
-  const pan = Math.sin(airPhase) * 0.24 + m.shock * 0.18 - m.velocity * 0.08;
+  const pan = Math.sin(airPhase) * 0.24 + activeShock * 0.18 - activeVelocity * 0.08;
   const mono = (low + machine + air + roomBreath + event) * fade;
-  const width = 0.55 + m.velocity * 0.22 + m.shock * 0.18;
+  const width = 0.55 + activeVelocity * 0.22 + activeShock * 0.18;
   left[i] = mono * (1 - pan * width) * 0.72;
   right[i] = mono * (1 + pan * width) * 0.72;
 }
 
 writeWav(OUT_PATH, left, right);
 console.log(`Generated ${OUT_PATH}`);
-console.log(`${DURATION_SEC}s, ${SAMPLE_RATE} Hz, stereo WAV`);
+console.log(`${DURATION_SEC}s (${INTRO_SEC}s intro + ${DATA_SEC}s data + ${OUTRO_SEC}s outro), ${SAMPLE_RATE} Hz, stereo WAV`);

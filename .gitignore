@@ -1,2 +1,5 @@
 .DS_Store
 .vscode/
+
+# Generated export media
+exports/audio/*.wav

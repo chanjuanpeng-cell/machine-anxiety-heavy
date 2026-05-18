@@ -656,6 +656,11 @@
             return -(Math.cos(Math.PI * THREE.MathUtils.clamp(t, 0, 1)) - 1) / 2;
         }
 
+        function getThresholdBlend(value, start, full) {
+            if (full <= start) return value >= full ? 1 : 0;
+            return easeInOutSine(THREE.MathUtils.clamp((value - start) / (full - start), 0, 1));
+        }
+
         function getPlaybackElapsed(now) {
             if (!systemStarted || !shotStartTime) return 0;
             if (isExportMode) {
@@ -748,6 +753,33 @@
             );
 
             return { anxiety, deviation, velocity, shock, movement, direction };
+        }
+
+        function getDeterministicErosionMemory(progress, forcedStress = null) {
+            const erasureConfig = SYSTEM_CONFIG.model.ceilingErasure;
+            if (!erasureConfig || exchangeData.length < 2) return 0;
+
+            const segmentCount = exchangeData.length - 1;
+            const segmentSeconds = (SYSTEM_CONFIG.export.dataRunMs / 1000) / segmentCount;
+            const exactSegment = THREE.MathUtils.clamp(progress, 0, 1) * segmentCount;
+            let memory = 0;
+
+            for (let segment = 0; segment < segmentCount; segment++) {
+                const portion = THREE.MathUtils.clamp(exactSegment - segment, 0, 1);
+                if (portion <= 0) break;
+
+                const mapped = getMappedAnxiety(segment + 1);
+                const stress = forcedStress === null ? mapped.anxiety : forcedStress;
+                const risingRatePressure = THREE.MathUtils.clamp((mapped.direction || 0) / RATE_RANGE_FOR_VELOCITY, 0, 1);
+                const fallingRatePressure = THREE.MathUtils.clamp(-(mapped.direction || 0) / RATE_RANGE_FOR_VELOCITY, 0, 1);
+                const shockPressure = mapped.shock || 0;
+                const buildRate = erasureConfig.memoryRiseRate * stress + erasureConfig.memoryShockRate * shockPressure + erasureConfig.memoryRiseRate * risingRatePressure;
+                const slowRate = erasureConfig.memoryFallRate * fallingRatePressure + 0.004 * stress;
+                const leak = erasureConfig.memoryLeakRate * (1 - stress) * (1 - shockPressure);
+                memory = THREE.MathUtils.clamp(memory + (buildRate + slowRate - leak) * segmentSeconds * portion, 0, 1);
+            }
+
+            return memory;
         }
 
         const uiDate = document.getElementById('display-date');
@@ -1460,23 +1492,19 @@
                 const pressurePulse = 0.78 + 0.22 * Math.sin(time * 2.4);
                 const erasureConfig = SYSTEM_CONFIG.model.ceilingErasure;
                 const ceilingErasure = erasureConfig && erasureConfig.enabled
-                    ? easeInOutSine(THREE.MathUtils.clamp((visualStress - erasureConfig.startAnxiety) / (erasureConfig.fullAnxiety - erasureConfig.startAnxiety), 0, 1))
+                    ? getThresholdBlend(visualStress, erasureConfig.startAnxiety, erasureConfig.fullAnxiety)
                     : 0;
                 const ceilingCutHeight = erasureConfig
                     ? THREE.MathUtils.lerp(erasureConfig.heightStart, erasureConfig.heightFull, ceilingErasure)
                     : Infinity;
                 const roomExposure = erasureConfig
-                    ? easeInOutSine(THREE.MathUtils.clamp((visualStress - erasureConfig.overheadStartAnxiety) / (erasureConfig.overheadFullAnxiety - erasureConfig.overheadStartAnxiety), 0, 1))
+                    ? getThresholdBlend(visualStress, erasureConfig.overheadStartAnxiety, erasureConfig.overheadFullAnxiety)
                     : 0;
                 if (erasureConfig) {
-                    const rateDirection = currentSoundMapping.direction || 0;
-                    const risingRatePressure = THREE.MathUtils.clamp(rateDirection / RATE_RANGE_FOR_VELOCITY, 0, 1);
-                    const fallingRatePressure = THREE.MathUtils.clamp(-rateDirection / RATE_RANGE_FOR_VELOCITY, 0, 1);
-                    const shockPressure = currentSoundMapping.shock || 0;
-                    const buildRate = erasureConfig.memoryRiseRate * visualStress + erasureConfig.memoryShockRate * shockPressure + erasureConfig.memoryRiseRate * risingRatePressure;
-                    const slowRate = erasureConfig.memoryFallRate * fallingRatePressure + 0.004 * visualStress;
-                    const leak = erasureConfig.memoryLeakRate * (1 - visualStress) * (1 - shockPressure);
-                    erosionMemory = THREE.MathUtils.clamp(erosionMemory + (buildRate + slowRate - leak) * dtSec, 0, 1);
+                    erosionMemory = getDeterministicErosionMemory(
+                        activeCycleProgress,
+                        DEBUG_STATE.previewAnxiety >= 0 ? visualStress : null
+                    );
                 }
                 const roofErosion = erasureConfig ? THREE.MathUtils.clamp(erosionMemory * 1.32 + Math.pow(visualStress, 3) * 0.10, 0, 1) : 0;
                 const wallErosion = erasureConfig ? THREE.MathUtils.clamp((erosionMemory - 0.18) * 0.78 + Math.pow(visualStress, 3) * 0.055, 0, 1) : 0;

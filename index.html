@@ -107,6 +107,27 @@
             letter-spacing: 1px;
             text-transform: uppercase;
         }
+        .debug-section-title {
+            margin: 12px 0 7px;
+            color: #f0f0f0;
+            font-size: 10px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+        .debug-live {
+            background: rgba(255, 255, 255, 0.035);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            padding: 8px;
+            margin-bottom: 10px;
+        }
+        .debug-live-row {
+            display: grid;
+            grid-template-columns: 74px 1fr;
+            gap: 8px;
+            margin: 4px 0;
+        }
+        .debug-live-row span:first-child { color: #8a8a8a; }
+        .debug-live-row span:last-child { color: #f0f0f0; text-align: right; }
         .debug-row {
             display: grid;
             grid-template-columns: 94px 1fr 42px;
@@ -851,8 +872,6 @@
         };
 
         const DEBUG_CONTROLS = [
-            ['cameraX', -8, 8, 0.01], ['cameraY', -1, 8, 0.01], ['cameraZ', -8, 8, 0.01],
-            ['targetX', -3, 3, 0.01], ['targetY', -1, 4, 0.01], ['targetZ', -4, 4, 0.01],
             ['pointSize', 0.002, 0.024, 0.0002], ['opacity', 0.2, 1, 0.01],
             ['ceilingStart', 0, 1, 0.01], ['ceilingFull', 0, 1, 0.01],
             ['overheadStart', 0, 1, 0.01], ['overheadFull', 0, 1, 0.01],
@@ -875,14 +894,9 @@
                 points.material.opacity = DEBUG_STATE.opacity;
             }
 
-            if (DEBUG_STATE.manualCamera) {
-                camera.position.set(DEBUG_STATE.cameraX, DEBUG_STATE.cameraY, DEBUG_STATE.cameraZ);
-                controls.target.set(DEBUG_STATE.targetX, DEBUG_STATE.targetY, DEBUG_STATE.targetZ);
-                controls.update();
-            }
         }
 
-        function captureCurrentView() {
+        function syncDebugCameraFromLiveView() {
             Object.assign(DEBUG_STATE, {
                 cameraX: camera.position.x,
                 cameraY: camera.position.y,
@@ -892,18 +906,46 @@
                 targetZ: controls.target.z,
                 manualCamera: true
             });
-            buildDebugPanel();
-            applyDebugState();
+        }
+
+        function getLiveViewValues() {
+            const distance = camera.position.distanceTo(controls.target);
+            return {
+                cameraX: Number(camera.position.x.toFixed(4)),
+                cameraY: Number(camera.position.y.toFixed(4)),
+                cameraZ: Number(camera.position.z.toFixed(4)),
+                targetX: Number(controls.target.x.toFixed(4)),
+                targetY: Number(controls.target.y.toFixed(4)),
+                targetZ: Number(controls.target.z.toFixed(4)),
+                distance: Number(distance.toFixed(4))
+            };
+        }
+
+        function updateLiveViewReadout() {
+            const values = getLiveViewValues();
+            Object.entries(values).forEach(([key, value]) => {
+                const el = document.getElementById(`live-${key}`);
+                if (el) el.textContent = value.toFixed(4);
+            });
+        }
+
+        function captureCurrentView() {
+            syncDebugCameraFromLiveView();
+            updateLiveViewReadout();
+            showDebugValues();
         }
 
         function getDebugValuesText() {
+            syncDebugCameraFromLiveView();
+            const live = getLiveViewValues();
             return JSON.stringify({
-                cameraX: Number(DEBUG_STATE.cameraX.toFixed(4)),
-                cameraY: Number(DEBUG_STATE.cameraY.toFixed(4)),
-                cameraZ: Number(DEBUG_STATE.cameraZ.toFixed(4)),
-                targetX: Number(DEBUG_STATE.targetX.toFixed(4)),
-                targetY: Number(DEBUG_STATE.targetY.toFixed(4)),
-                targetZ: Number(DEBUG_STATE.targetZ.toFixed(4)),
+                cameraX: live.cameraX,
+                cameraY: live.cameraY,
+                cameraZ: live.cameraZ,
+                targetX: live.targetX,
+                targetY: live.targetY,
+                targetZ: live.targetZ,
+                distance: live.distance,
                 pointSize: Number(DEBUG_STATE.pointSize.toFixed(4)),
                 opacity: Number(DEBUG_STATE.opacity.toFixed(3)),
                 ceilingStart: Number(DEBUG_STATE.ceilingStart.toFixed(3)),
@@ -913,7 +955,7 @@
                 ceilingDrift: Number(DEBUG_STATE.ceilingDrift.toFixed(3)),
                 roomDeform: Number(DEBUG_STATE.roomDeform.toFixed(4)),
                 previewAnxiety: Number(DEBUG_STATE.previewAnxiety.toFixed(3)),
-                manualCamera: DEBUG_STATE.manualCamera
+                manualCamera: true
             }, null, 2);
         }
 
@@ -933,6 +975,29 @@
             const holder = document.getElementById('debug-controls');
             if (!panel || !holder) return;
             holder.innerHTML = '';
+            const liveTitle = document.createElement('div');
+            liveTitle.className = 'debug-section-title';
+            liveTitle.textContent = 'Live View';
+            const liveBox = document.createElement('div');
+            liveBox.className = 'debug-live';
+            ['cameraX', 'cameraY', 'cameraZ', 'targetX', 'targetY', 'targetZ', 'distance'].forEach((key) => {
+                const row = document.createElement('div');
+                row.className = 'debug-live-row';
+                const label = document.createElement('span');
+                label.textContent = key;
+                const value = document.createElement('span');
+                value.id = `live-${key}`;
+                value.textContent = '0.0000';
+                row.append(label, value);
+                liveBox.appendChild(row);
+            });
+            holder.append(liveTitle, liveBox);
+
+            const controlsTitle = document.createElement('div');
+            controlsTitle.className = 'debug-section-title';
+            controlsTitle.textContent = 'Visual Controls';
+            holder.appendChild(controlsTitle);
+
             DEBUG_CONTROLS.forEach(([key, min, max, step]) => {
                 const row = document.createElement('div');
                 row.className = 'debug-row';
@@ -956,26 +1021,33 @@
                 holder.appendChild(row);
             });
 
+            updateLiveViewReadout();
             document.getElementById('debug-side').addEventListener('click', () => {
-                Object.assign(DEBUG_STATE, { cameraX: -4.15, cameraY: 0.72, cameraZ: 2.45, targetX: 0.25, targetY: 0.34, targetZ: 0.08, manualCamera: true });
-                buildDebugPanel();
-                applyDebugState();
+                camera.position.set(-4.15, 0.72, 2.45);
+                controls.target.set(0.25, 0.34, 0.08);
+                controls.update();
+                syncDebugCameraFromLiveView();
+                updateLiveViewReadout();
             });
             document.getElementById('debug-overhead').addEventListener('click', () => {
-                Object.assign(DEBUG_STATE, { cameraX: 0.12, cameraY: 4.85, cameraZ: 0.72, targetX: 0.22, targetY: -0.08, targetZ: 0.02, manualCamera: true });
-                buildDebugPanel();
-                applyDebugState();
+                camera.position.set(0.12, 4.85, 0.72);
+                controls.target.set(0.22, -0.08, 0.02);
+                controls.update();
+                syncDebugCameraFromLiveView();
+                updateLiveViewReadout();
             });
             document.getElementById('debug-capture').addEventListener('click', () => captureCurrentView());
-            document.getElementById('debug-lock').addEventListener('click', () => {
-                captureCurrentView();
-                DEBUG_STATE.manualCamera = true;
-                showDebugValues();
-            });
+            document.getElementById('debug-lock').addEventListener('click', () => captureCurrentView());
             document.getElementById('debug-pause').addEventListener('click', () => togglePlaybackPause());
             document.getElementById('debug-copy').addEventListener('click', () => showDebugValues());
             document.getElementById('debug-hide').addEventListener('click', () => panel.classList.remove('visible'));
         }
+
+        controls.addEventListener('change', () => {
+            if (document.getElementById('debug-panel')?.classList.contains('visible')) {
+                updateLiveViewReadout();
+            }
+        });
 
         buildDebugPanel();
 
@@ -1093,6 +1165,7 @@
             if (key === 'd') {
                 event.preventDefault();
                 document.getElementById('debug-panel')?.classList.toggle('visible');
+                updateLiveViewReadout();
             }
             if (key === ' ') {
                 event.preventDefault();

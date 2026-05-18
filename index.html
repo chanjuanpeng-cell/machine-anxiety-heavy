@@ -1106,9 +1106,12 @@
         }
 
         function togglePlaybackPause() {
+            if (!systemStarted || !dataPlaybackStarted) return;
             playbackPaused = !playbackPaused;
             motionPaused = playbackPaused;
             updatePauseButton();
+            setExportStatus(playbackPaused ? 'DATA PLAYBACK PAUSED' : 'DATA PLAYBACK RESUMED');
+            setTimeout(() => setExportStatus(''), 1200);
         }
 
         const exportStatus = document.getElementById('export-status');
@@ -1221,7 +1224,7 @@
                 document.getElementById('debug-panel')?.classList.toggle('visible');
                 updateLiveViewReadout();
             }
-            if (key === ' ') {
+            if (key === ' ' || key === 'p') {
                 event.preventDefault();
                 togglePlaybackPause();
             }

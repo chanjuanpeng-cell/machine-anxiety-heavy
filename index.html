@@ -233,6 +233,7 @@
         let isAudioInitialized = false;
 
         let systemStarted = false;
+        let dataPlaybackStarted = false;
         let motionPaused = false;
         let playbackPaused = false;
         let lastFrameTime = performance.now();
@@ -660,6 +661,7 @@
             if (isExportMode) {
                 return exportFrameCount * (1000 / SYSTEM_CONFIG.export.sequenceFramerate);
             }
+            if (!dataPlaybackStarted) return 0;
             return Math.max(0, now - shotStartTime);
         }
 
@@ -766,7 +768,7 @@
                 setLoadStatus('EXCHANGE DATA FAILED TO LOAD', true);
             });
 
-        function resetSystemState() {
+        function resetSystemState(preserveView = false) {
             currentDayIndex = 0;
             lastDayChangeTime = virtualTime || Date.now();
             shotStartTime = lastDayChangeTime;
@@ -784,11 +786,27 @@
             pointFrameSkip = 0;
             cameraSmoothingReady = false;
             titleSequenceStart = virtualTime || Date.now();
-            camera.position.copy(PUSH_START_CAMERA);
-            controls.target.copy(PUSH_START_TARGET);
+            if (!preserveView) {
+                camera.position.copy(PUSH_START_CAMERA);
+                controls.target.copy(PUSH_START_TARGET);
+            }
             // Restore classic auto-rotate state and speed
             controls.autoRotate = true;
             controls.autoRotateSpeed = -1.25;
+        }
+
+        function startDataPlayback() {
+            if (!systemStarted) startSystem();
+            virtualTime = Date.now();
+            resetSystemState(true);
+            dataPlaybackStarted = true;
+            playbackPaused = false;
+            motionPaused = false;
+            updatePauseButton();
+            document.getElementById('ui-container').style.display = 'none';
+            if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+            setExportStatus('DATA PLAYBACK STARTED');
+            setTimeout(() => setExportStatus(''), 1400);
         }
 
         function startSystem() {
@@ -869,15 +887,16 @@
             if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
             resetSystemState();
             systemStarted = true;
+            dataPlaybackStarted = false;
 
-            if (gainNode) gainNode.gain.setValueAtTime(0.06, audioCtx.currentTime);
-            if (roomNoiseGain) roomNoiseGain.gain.setValueAtTime(0.048, audioCtx.currentTime);
+            if (gainNode) gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+            if (roomNoiseGain) roomNoiseGain.gain.setValueAtTime(0, audioCtx.currentTime);
         }
 
         const introOverlay = document.getElementById('intro-overlay');
         introOverlay.addEventListener('click', () => {
             if (!systemStarted) startSystem();
-            document.getElementById('ui-container').style.display = 'block';
+            document.getElementById('ui-container').style.display = 'none';
             introOverlay.classList.add('hidden');
             setTimeout(() => { introOverlay.style.display = 'none'; }, 950);
         }, { once: true });
@@ -1137,6 +1156,11 @@
         }
 
         function startSequenceExport() {
+            if (!systemStarted) startSystem();
+            dataPlaybackStarted = true;
+            playbackPaused = false;
+            motionPaused = false;
+            updatePauseButton();
             isExportMode = true;
             exportFrameCount = 0;
             prepareExportViewport(SYSTEM_CONFIG.export.sequenceWidth, SYSTEM_CONFIG.export.sequenceHeight);
@@ -1200,6 +1224,10 @@
             if (key === ' ') {
                 event.preventDefault();
                 togglePlaybackPause();
+            }
+            if (key === 'enter') {
+                event.preventDefault();
+                startDataPlayback();
             }
             if (key === 's') {
                 event.preventDefault();

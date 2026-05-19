@@ -190,6 +190,7 @@
         <div class="debug-actions">
             <button id="debug-side">Side View</button>
             <button id="debug-overhead">Overhead</button>
+            <button id="debug-auto-view">Auto View</button>
             <button id="debug-capture">Capture View</button>
             <button id="debug-lock">Lock View</button>
             <button id="debug-pause">Pause</button>
@@ -243,7 +244,7 @@
 
         const SYSTEM_CONFIG = {
             model: {
-                label: 'DORM HEAVY CLEAN',
+                label: 'DORM',
                 path: 'models/scaniverse_room_clean_585k.ply',
                 pointSize: 0.0100,
                 pointOpacity: 0.92,
@@ -266,12 +267,12 @@
                     overheadStartAnxiety: 1.0,
                     overheadFullAnxiety: 1.0,
                     heightStart: 1.62,
-                    heightFull: 0.92,
-                    ceilingDrift: 22.0,
-                    roomDeformBoost: 0.180,
+                    heightFull: 0.78,
+                    ceilingDrift: 15.0,
+                    roomDeformBoost: 0.310,
                     wallStartAnxiety: 0.48,
                     wallFullAnxiety: 0.94,
-                    wallDrift: 8.5,
+                    wallDrift: 5.4,
                     blankBrightness: 0.50,
                     blankChroma: 0.20,
                     memoryRiseRate: 0.030,
@@ -281,9 +282,15 @@
                     highStressWave: 0.030,
                     erosionGate: {
                         enabled: true,
-                        startProgress: 0.38,
+                        startProgress: 0.24,
                         fullProgress: 1.00,
-                        memoryBoost: 0.78
+                        memoryBoost: 0.88,
+                        objectStartProgress: 0.28,
+                        objectFullProgress: 0.62,
+                        structureStartProgress: 0.78,
+                        structureFullProgress: 1.00,
+                        breathFullProgress: 0.08,
+                        objectDrift: 3.2
                     }
                 },
                 alphaTest: 0.08,
@@ -291,6 +298,22 @@
                 startTarget: new THREE.Vector3(0.25, 0.34, 0.08),
                 overheadCamera: new THREE.Vector3(0.12, 4.85, 0.72),
                 overheadTarget: new THREE.Vector3(0.22, -0.08, 0.02),
+                autoView: {
+                    enabled: true,
+                    modelRotation: true,
+                    shots: [
+                        { progress: 0.00, camera: new THREE.Vector3(-4.5291, 1.8280, 5.4654), target: new THREE.Vector3(0.1772, 0.2380, 0.0072), yaw: -0.02, pitch: 0.00 },
+                        { progress: 0.12, camera: new THREE.Vector3(-7.1724, 0.8631, 0.2565), target: new THREE.Vector3(0.1772, 0.2380, 0.0072), yaw: -0.01, pitch: 0.00 },
+                        { progress: 0.24, camera: new THREE.Vector3(-0.2622, 0.9773, -7.3228), target: new THREE.Vector3(0.1772, 0.2380, 0.0072), yaw: 0.01, pitch: 0.00 },
+                        { progress: 0.32, camera: new THREE.Vector3(-0.5000, 0.2600, -4.8500), target: new THREE.Vector3(-0.0300, -0.1600, 0.0300), yaw: 0.01, pitch: 0.00 },
+                        { progress: 0.38, camera: new THREE.Vector3(-0.2519, -0.2498, -3.5515), target: new THREE.Vector3(-0.1646, -0.3838, 0.0794), yaw: 0.00, pitch: 0.00 },
+                        { progress: 0.58, camera: new THREE.Vector3(-0.2489, -0.2190, -3.5414), target: new THREE.Vector3(-0.2003, -0.4779, 0.0212), yaw: 0.00, pitch: 0.00 },
+                        { progress: 0.68, camera: new THREE.Vector3(0.5767, 1.4440, -3.1418), target: new THREE.Vector3(-0.2003, -0.4779, 0.0212), yaw: -0.02, pitch: 0.01 },
+                        { progress: 0.78, camera: new THREE.Vector3(-0.0505, 1.6247, -0.3042), target: new THREE.Vector3(-0.2003, -0.4779, 0.0212), yaw: -0.01, pitch: -0.01 },
+                        { progress: 0.90, camera: new THREE.Vector3(0.2643, 6.0411, -0.9877), target: new THREE.Vector3(-0.2003, -0.4779, 0.0212), yaw: 0.02, pitch: -0.02 },
+                        { progress: 1.00, camera: new THREE.Vector3(0.2643, 6.0411, -0.9877), target: new THREE.Vector3(-0.2003, -0.4779, 0.0212), yaw: 0.04, pitch: -0.02 }
+                    ]
+                },
                 pressureOrigin: new THREE.Vector3(0.75, 0.2, 1.0),
                 pressureRadius: 3.9
             },
@@ -667,6 +690,40 @@
             return easeInOutSine(THREE.MathUtils.clamp((value - start) / (full - start), 0, 1));
         }
 
+        function getAutoViewFrame(progress) {
+            const autoView = SYSTEM_CONFIG.model.autoView;
+            const shots = autoView && autoView.shots ? autoView.shots : [];
+            if (!shots.length) {
+                return {
+                    camera: SYSTEM_CONFIG.model.startCamera,
+                    target: SYSTEM_CONFIG.model.startTarget,
+                    yaw: 0,
+                    pitch: 0
+                };
+            }
+
+            const p = THREE.MathUtils.clamp(progress, 0, 1);
+            let from = shots[0];
+            let to = shots[shots.length - 1];
+            for (let i = 0; i < shots.length - 1; i++) {
+                if (p >= shots[i].progress && p <= shots[i + 1].progress) {
+                    from = shots[i];
+                    to = shots[i + 1];
+                    break;
+                }
+            }
+
+            const local = to.progress === from.progress
+                ? 0
+                : easeInOutSine((p - from.progress) / (to.progress - from.progress));
+            return {
+                camera: new THREE.Vector3().lerpVectors(from.camera, to.camera, local),
+                target: new THREE.Vector3().lerpVectors(from.target, to.target, local),
+                yaw: THREE.MathUtils.lerp(from.yaw || 0, to.yaw || 0, local),
+                pitch: THREE.MathUtils.lerp(from.pitch || 0, to.pitch || 0, local)
+            };
+        }
+
         function getPlaybackElapsed(now) {
             if (!systemStarted || !shotStartTime) return 0;
             if (isExportMode) {
@@ -847,6 +904,7 @@
             if (!systemStarted) startSystem();
             virtualTime = Date.now();
             resetSystemState(true);
+            DEBUG_STATE.manualCamera = false;
             dataPlaybackStarted = true;
             playbackPaused = false;
             motionPaused = false;
@@ -943,10 +1001,9 @@
 
         const introOverlay = document.getElementById('intro-overlay');
         introOverlay.addEventListener('click', () => {
-            if (!systemStarted) startSystem();
-            document.getElementById('ui-container').style.display = 'none';
             introOverlay.classList.add('hidden');
             setTimeout(() => { introOverlay.style.display = 'none'; }, 950);
+            startDataPlayback();
         }, { once: true });
 
         const DEBUG_STATE = {
@@ -965,14 +1022,14 @@
             ceilingDrift: SYSTEM_CONFIG.model.ceilingErasure.ceilingDrift,
             roomDeform: SYSTEM_CONFIG.model.ceilingErasure.roomDeformBoost,
             previewAnxiety: -1,
-            manualCamera: true
+            manualCamera: false
         };
 
         const DEBUG_CONTROLS = [
             ['pointSize', 0.002, 0.024, 0.0002], ['opacity', 0.2, 1, 0.01],
             ['ceilingStart', 0, 1, 0.01], ['ceilingFull', 0, 1, 0.01],
             ['overheadStart', 0, 1, 0.01], ['overheadFull', 0, 1, 0.01],
-            ['ceilingDrift', 0, 16, 0.1], ['roomDeform', 0, 0.18, 0.001],
+            ['ceilingDrift', 0, 16, 0.1], ['roomDeform', 0, 0.36, 0.001],
             ['previewAnxiety', -1, 1, 0.01]
         ];
 
@@ -1120,6 +1177,7 @@
 
             updateLiveViewReadout();
             document.getElementById('debug-side').addEventListener('click', () => {
+                DEBUG_STATE.manualCamera = true;
                 camera.position.set(-4.15, 0.72, 2.45);
                 controls.target.set(0.25, 0.34, 0.08);
                 controls.update();
@@ -1127,10 +1185,16 @@
                 updateLiveViewReadout();
             });
             document.getElementById('debug-overhead').addEventListener('click', () => {
+                DEBUG_STATE.manualCamera = true;
                 camera.position.set(0.12, 4.85, 0.72);
                 controls.target.set(0.22, -0.08, 0.02);
                 controls.update();
                 syncDebugCameraFromLiveView();
+                updateLiveViewReadout();
+            });
+            document.getElementById('debug-auto-view').addEventListener('click', () => {
+                DEBUG_STATE.manualCamera = false;
+                controls.update();
                 updateLiveViewReadout();
             });
             document.getElementById('debug-capture').addEventListener('click', () => captureCurrentView());
@@ -1139,6 +1203,17 @@
             document.getElementById('debug-copy').addEventListener('click', () => showDebugValues());
             document.getElementById('debug-hide').addEventListener('click', () => panel.classList.remove('visible'));
         }
+
+        function enterManualCameraMode() {
+            DEBUG_STATE.manualCamera = true;
+            updateLiveViewReadout();
+        }
+
+        controls.addEventListener('start', () => {
+            enterManualCameraMode();
+        });
+
+        renderer.domElement.addEventListener('wheel', () => enterManualCameraMode(), { passive: true });
 
         controls.addEventListener('change', () => {
             if (document.getElementById('debug-panel')?.classList.contains('visible')) {
@@ -1267,6 +1342,10 @@
         // Export controls: S saves one high-resolution still, K starts/stops a JPG sequence.
         window.addEventListener('keydown', (event) => {
             const key = event.key.toLowerCase();
+            const functionKeys = new Set(['d', ' ', 'p', 'enter', 's', 'k', 'a']);
+            if (!functionKeys.has(key) && systemStarted && dataPlaybackStarted) {
+                enterManualCameraMode();
+            }
             if (key === 'd') {
                 event.preventDefault();
                 document.getElementById('debug-panel')?.classList.toggle('visible');
@@ -1279,6 +1358,12 @@
             if (key === 'enter') {
                 event.preventDefault();
                 startDataPlayback();
+            }
+            if (key === 'a') {
+                event.preventDefault();
+                DEBUG_STATE.manualCamera = false;
+                setExportStatus('AUTO VIEW RESUMED');
+                setTimeout(() => setExportStatus(''), 1000);
             }
             if (key === 's') {
                 event.preventDefault();
@@ -1329,7 +1414,20 @@
             const breathDrift = Math.sin(now * 0.0005) * 0.6;
             const anxietyPush = currentAnxiety * 2.3;
             const isCeilingErasureView = SYSTEM_CONFIG.model.viewMode === 'ceilingErasure';
-            if (isCeilingErasureView) {
+            const autoView = SYSTEM_CONFIG.model.autoView;
+            if (isCeilingErasureView && autoView && autoView.enabled && !DEBUG_STATE.manualCamera) {
+                const frame = getAutoViewFrame(activeCycleProgress);
+                camera.position.copy(frame.camera);
+                controls.target.copy(frame.target);
+                controls.autoRotate = false;
+                if (points && autoView.modelRotation) {
+                    const stressYaw = Math.sin(now * 0.00045) * 0.025 * (0.25 + currentAnxiety);
+                    points.rotation.y = frame.yaw + stressYaw;
+                    points.rotation.x = frame.pitch;
+                    points.rotation.z = Math.sin(activeCycleProgress * Math.PI * 2.0) * 0.006 * currentAnxiety;
+                }
+                controls.update();
+            } else if (isCeilingErasureView) {
                 const erasureConfig = SYSTEM_CONFIG.model.ceilingErasure;
                 const overheadBlend = easeInOutSine(THREE.MathUtils.clamp((debugAnxiety - erasureConfig.overheadStartAnxiety) / (erasureConfig.overheadFullAnxiety - erasureConfig.overheadStartAnxiety), 0, 1));
                 const breath = Math.sin(now * 0.00032) * 0.045;
@@ -1507,14 +1605,40 @@
                 const pressureDrive = THREE.MathUtils.clamp((visualStress - 0.22) / 0.78, 0, 1) * 0.35;
                 const pressurePulse = 0.78 + 0.22 * Math.sin(time * 2.4);
                 const erasureConfig = SYSTEM_CONFIG.model.ceilingErasure;
-                const ceilingErasure = erasureConfig && erasureConfig.enabled
+                const erosionGate = erasureConfig && erasureConfig.enabled
+                    ? (erasureConfig.erosionGate || { enabled: false })
+                    : null;
+                const breathDrive = erasureConfig && erasureConfig.enabled && dataPlaybackStarted
+                    ? getThresholdBlend(activeCycleProgress, 0, erosionGate && erosionGate.breathFullProgress !== undefined ? erosionGate.breathFullProgress : 0.08)
+                    : 0;
+                const structuralErosion = erosionGate && erosionGate.enabled
+                    ? getThresholdBlend(
+                        activeCycleProgress,
+                        erosionGate.structureStartProgress !== undefined ? erosionGate.structureStartProgress : 0.70,
+                        erosionGate.structureFullProgress !== undefined ? erosionGate.structureFullProgress : 1.00
+                    )
+                    : 0;
+                const objectPhase = erosionGate && erosionGate.enabled
+                    ? getThresholdBlend(
+                        activeCycleProgress,
+                        erosionGate.objectStartProgress !== undefined ? erosionGate.objectStartProgress : 0.24,
+                        erosionGate.objectFullProgress !== undefined ? erosionGate.objectFullProgress : 0.58
+                    )
+                    : 0;
+                const breathStress = breathDrive * (0.25 + visualStress * 0.75);
+                finalInstability += breathStress * 0.016 + structuralErosion * 0.003;
+                const rawCeilingErasure = erasureConfig && erasureConfig.enabled
                     ? getThresholdBlend(visualStress, erasureConfig.startAnxiety, erasureConfig.fullAnxiety)
                     : 0;
+                const ceilingErasure = THREE.MathUtils.clamp(Math.max(rawCeilingErasure, structuralErosion * 0.96), 0, 1);
                 const ceilingCutHeight = erasureConfig
                     ? THREE.MathUtils.lerp(erasureConfig.heightStart, erasureConfig.heightFull, ceilingErasure)
                     : Infinity;
-                const roomExposure = erasureConfig
+                const rawRoomExposure = erasureConfig
                     ? getThresholdBlend(visualStress, erasureConfig.overheadStartAnxiety, erasureConfig.overheadFullAnxiety)
+                    : 0;
+                const roomExposure = erasureConfig
+                    ? THREE.MathUtils.clamp(Math.max(rawRoomExposure, breathStress * 0.92, structuralErosion * 0.50), 0, 1)
                     : 0;
                 if (erasureConfig) {
                     erosionMemory = getDeterministicErosionMemory(
@@ -1522,8 +1646,9 @@
                         DEBUG_STATE.previewAnxiety >= 0 ? visualStress : null
                     );
                 }
-                const roofErosion = erasureConfig ? THREE.MathUtils.clamp(erosionMemory * 1.32 + Math.pow(visualStress, 3) * 0.10, 0, 1) : 0;
-                const wallErosion = erasureConfig ? THREE.MathUtils.clamp((erosionMemory - 0.18) * 0.78 + Math.pow(visualStress, 3) * 0.055, 0, 1) : 0;
+                const objectErosion = erasureConfig ? THREE.MathUtils.clamp(objectPhase * 0.26 + (erosionMemory - 0.02) * 0.36 + Math.pow(visualStress, 3) * 0.07, 0, 0.56) : 0;
+                const roofErosion = erasureConfig ? THREE.MathUtils.clamp(erosionMemory * 0.86 + structuralErosion * 0.58 + Math.pow(visualStress, 3) * 0.05, 0, 1) : 0;
+                const wallErosion = erasureConfig ? THREE.MathUtils.clamp((erosionMemory - 0.18) * 0.58 + structuralErosion * 0.42 + Math.pow(visualStress, 3) * 0.035, 0, 1) : 0;
                 const highStressWave = erasureConfig ? THREE.MathUtils.clamp((visualStress - 0.76) / 0.24, 0, 1) : 0;
 
                 for (let i = 0; i < count; i++) {
@@ -1544,6 +1669,10 @@
                     const shellWall = THREE.MathUtils.clamp((Math.abs(bx - 1.25) - 1.03) / 0.42, 0, 1) + THREE.MathUtils.clamp((Math.abs(bz) - 2.55) / 0.62, 0, 1);
                     const wallHeight = THREE.MathUtils.clamp((by - 0.45) / 0.75, 0, 1) * THREE.MathUtils.clamp((2.55 - by) / 0.70, 0, 1);
                     const blankWallWeight = THREE.MathUtils.clamp(shellWall, 0, 1) * wallHeight * blankSurface * wallErosion;
+                    const interiorDetail = (1 - THREE.MathUtils.clamp(shellWall, 0, 1)) * (1 - ceilingWeight);
+                    const attachmentHeight = THREE.MathUtils.clamp((by - 0.18) / 0.52, 0, 1) * THREE.MathUtils.clamp((1.82 - by) / 0.82, 0, 1);
+                    const attachmentTexture = THREE.MathUtils.clamp((chroma - 0.035) / 0.22, 0, 1) * 0.55 + THREE.MathUtils.clamp((brightness - 0.22) / 0.42, 0, 1) * 0.45;
+                    const attachedObjectWeight = interiorDetail * attachmentHeight * attachmentTexture;
 
                     const dist = Math.sqrt(bx * bx + by * by + bz * bz);
                     const edgeWeight = Math.min(1, (1.0 - Math.exp(-dist * 1.45)) * 1.35);
@@ -1588,12 +1717,19 @@
 
                     const roofRegion = 0.08 + erasureHash * 0.70 + 0.10 * Math.sin(bx * 1.9 + bz * 1.2);
                     const wallRegion = 0.22 + erasureHash * 0.66 + 0.12 * Math.sin(bz * 1.6 + by * 2.1);
+                    const objectRegion = 0.16 + erasureHash * 0.70 + 0.10 * Math.sin(bx * 2.6 + bz * 1.8 + by * 1.4);
+                    const objectRemoval = THREE.MathUtils.clamp((objectErosion - objectRegion) / 0.30, 0, 1) * THREE.MathUtils.clamp(attachedObjectWeight * 1.15, 0, 1);
                     const roofRemoval = THREE.MathUtils.clamp((roofErosion - roofRegion) / 0.20, 0, 1) * THREE.MathUtils.clamp(ceilingWeight * 1.4, 0, 1);
                     const wallRemoval = THREE.MathUtils.clamp((wallErosion - wallRegion) / 0.22, 0, 1) * THREE.MathUtils.clamp(blankWallWeight * 1.3, 0, 1);
-                    const surfaceRemoval = Math.max(roofRemoval, wallRemoval);
+                    const surfaceRemoval = Math.max(objectRemoval, roofRemoval, wallRemoval);
 
                     if (surfaceRemoval > 0.01) {
-                        const drift = surfaceRemoval * surfaceRemoval * (roofRemoval >= wallRemoval ? erasureConfig.ceilingDrift : erasureConfig.wallDrift);
+                        const driftAmount = roofRemoval >= wallRemoval && roofRemoval >= objectRemoval
+                            ? erasureConfig.ceilingDrift
+                            : wallRemoval >= objectRemoval
+                                ? erasureConfig.wallDrift
+                                : (erosionGate && erosionGate.objectDrift !== undefined ? erosionGate.objectDrift : 3.2);
+                        const drift = surfaceRemoval * surfaceRemoval * driftAmount;
                         const side = signedNoise(i * 2.11 + 301.4);
                         targetX += side * drift * 0.10 + pressureX * drift * 0.020;
                         targetY += drift * (0.95 + erasureHash * 0.55);

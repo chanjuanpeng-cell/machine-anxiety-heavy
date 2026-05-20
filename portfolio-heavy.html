@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Machine Anxiety — Heavy Model Revision Portfolio</title>
+
+<style>
+body {
+    margin: 0;
+    background: #030303;
+    color: #eaeaea;
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    line-height: 1.65;
+}
+
+.container {
+    max-width: 940px;
+    margin: auto;
+    padding: 64px 22px;
+}
+
+h1 {
+    font-size: clamp(34px, 5vw, 52px);
+    margin: 0 0 12px;
+    letter-spacing: 0;
+}
+
+h2 {
+    margin-top: 62px;
+    font-size: 22px;
+    color: #aaa;
+}
+
+h3 {
+    margin-top: 32px;
+    font-size: 16px;
+    color: #ddd;
+}
+
+p {
+    font-size: 16px;
+    color: #ccc;
+}
+
+ul {
+    color: #ccc;
+    padding-left: 22px;
+}
+
+li {
+    margin: 7px 0;
+}
+
+.meta {
+    color: #888;
+    font-size: 14px;
+    margin-bottom: 42px;
+}
+
+.statement {
+    font-size: 18px;
+    color: #e0e0e0;
+}
+
+.links {
+    margin-top: 22px;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+    margin-top: 24px;
+}
+
+.panel {
+    border: 1px solid #222;
+    background: rgba(255,255,255,0.035);
+    padding: 18px;
+}
+
+.panel p {
+    margin: 0;
+    color: #bbb;
+}
+
+.label {
+    display: block;
+    margin-bottom: 8px;
+    color: #777;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+a {
+    color: #fff;
+    text-decoration: none;
+    border-bottom: 1px solid #555;
+}
+
+a:hover {
+    border-color: #fff;
+}
+
+code {
+    color: #eee;
+    background: #111;
+    padding: 2px 5px;
+}
+
+.footer {
+    margin-top: 82px;
+    font-size: 13px;
+    color: #666;
+}
+
+@media (max-width: 720px) {
+    .grid {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>Machine Anxiety</h1>
+<div class="meta">
+2026 — Heavy point-cloud WebGL revision + real-time data-driven sound
+</div>
+
+<p class="statement">
+Machine Anxiety is a data-driven WebGL work that translates economic volatility into the destabilisation of a scanned domestic room.
+</p>
+
+<p>
+This revised version develops the original black-and-white point-cloud system into a heavier colour scan of a student room. The work uses historical GBP/CNY exchange-rate data to activate spatial pressure, point-cloud breathing, delayed erosion, automated camera movement, and a live Web Audio system.
+</p>
+
+<p>
+The project treats anxiety not as an internal emotion, but as a computational pressure acting on private space. Financial fluctuation enters the room as a force: first as subtle breathing deformation, then as accumulated particle dispersal, and finally as a partial loss of ceiling, wall, and object stability.
+</p>
+
+<h2>Live Version</h2>
+
+<div class="links">
+<a href="https://machine-anxiety-heavy.vercel.app/" target="_blank">View the heavy model revision →</a>
+<br><br>
+<a href="https://machine-anxiety.vercel.app/" target="_blank">View the original submitted version →</a>
+<br><br>
+<a href="https://github.com/chanjuanpeng-cell/machine-anxiety-heavy" target="_blank">View heavy revision repository →</a>
+</div>
+
+<h2>Viewing Experience</h2>
+
+<p>
+The work opens with an entry screen. After entering, the data timeline begins and the room performs as a responsive system. The camera starts outside the scanned room, slowly moves around the side of the architectural volume, approaches the window/bed area, and enters the interior. After the first major data pressure event, the view rises toward an overhead perspective, then returns to a side view to observe the later instability.
+</p>
+
+<p>
+The room does not simply visualise a graph. Instead, exchange-rate movement becomes a behavioural condition inside the scan. Low pressure produces subtle breathing and spatial vibration. Peaks produce object-level dispersal and delayed structural erosion. Later data events accumulate rather than reset, so the room carries the memory of previous volatility.
+</p>
+
+<h2>System Logic</h2>
+
+<div class="grid">
+    <div class="panel">
+        <span class="label">Data</span>
+        <p>Historical GBP/CNY exchange-rate values from September 2024 to April 2026 drive the timeline.</p>
+    </div>
+    <div class="panel">
+        <span class="label">Volatility</span>
+        <p>Rate change and shock are translated into deformation intensity, particle dispersal, sound density, and system pressure.</p>
+    </div>
+    <div class="panel">
+        <span class="label">Room Behaviour</span>
+        <p>The space first breathes and compresses, then gradually loses coherence through accumulated point-cloud instability.</p>
+    </div>
+    <div class="panel">
+        <span class="label">Camera</span>
+        <p>A designed automatic camera path moves from exterior observation into the room, then returns to structural distance after the first burst.</p>
+    </div>
+</div>
+
+<h2>Model Revision</h2>
+
+<p>
+The revised model uses a cleaned Scaniverse room scan exported as a PLY point cloud. Earlier tests showed that the raw point cloud appeared too sparse and too mechanically regular. The current version adds a controlled irregularisation layer inside the WebGL system: points are subtly jittered, selectively duplicated near their original positions, and given slight colour variation. This makes the scan feel less like a grid and more like an unstable spatial memory.
+</p>
+
+<p>
+The current model file is <code>models/scaniverse_room_clean_585k.ply</code>. The system label is simplified to <code>DORM</code> so the loading state reads as part of the work rather than as a technical filename.
+</p>
+
+<h2>Sound System</h2>
+
+<p>
+The revised version adds a real-time Web Audio system driven by the same exchange-rate data as the visuals. The sound is intentionally restrained and bio-digital rather than cinematic. It behaves like unstable vital signs inside a scanned domestic environment.
+</p>
+
+<ul>
+    <li>Low-frequency pressure oscillator for slow breathing tension</li>
+    <li>Irregular sub-bass pulse for non-musical heartbeat-like pressure</li>
+    <li>Short high-frequency data clicks whose pitch follows trend direction</li>
+    <li>Filtered noise for room air, particle activity, and screen hum</li>
+    <li>Brief overload glitches during extreme volatility</li>
+</ul>
+
+<h2>Interaction</h2>
+
+<p>
+The public version is designed to play automatically after the viewer enters the work. Mouse or keyboard movement can interrupt the automatic view and allow manual exploration. The debug controls remain available for development, but the main viewing logic is structured around a guided cinematic path.
+</p>
+
+<h2>Export</h2>
+
+<p>
+The system includes an offline frame-sequence export workflow for video production. The export target is a 1920 × 1080 JPG sequence at 30 fps, designed for assembly and final grading in Adobe Premiere Pro. The on-screen data panel is composited during export so the visual state, data state, and sound logic can remain aligned in documentation and final video production.
+</p>
+
+<h2>Technical Notes</h2>
+
+<ul>
+    <li>Custom Three.js / WebGL point-cloud system</li>
+    <li>Colour PLY point-cloud room scan, cleaned and reprocessed for browser use</li>
+    <li>Deterministic point-cloud irregularisation for denser, less grid-like visual behaviour</li>
+    <li>Historical GBP/CNY exchange-rate dataset stored as JSON</li>
+    <li>Data mappings for breathing deformation, delayed erosion, particle dispersal, camera pressure, and sound</li>
+    <li>Real-time Web Audio API synthesis</li>
+    <li>Automatic camera choreography with manual override</li>
+    <li>CCapture.js frame-sequence export for video production</li>
+    <li>Separate GitHub/Vercel project to protect the original submitted version</li>
+</ul>
+
+<h2>Version Management</h2>
+
+<p>
+The original submitted version remains at <a href="https://machine-anxiety.vercel.app/" target="_blank">machine-anxiety.vercel.app</a>. This heavy model revision is separated into its own repository and Vercel project, so it can be developed, shown, and revised without changing the earlier submitted competition version.
+</p>
+
+<p>
+Current working branch: <code>local-heavy-model-test-v2</code><br>
+Heavy revision repository: <code>machine-anxiety-heavy</code><br>
+Public live URL: <code>https://machine-anxiety-heavy.vercel.app/</code>
+</p>
+
+<h2>Future Development</h2>
+
+<p>
+The current revision establishes a reusable structure for future versions: different room scans, higher-density local rendering, alternative datasets, more complex deformation systems, and future links to software such as TouchDesigner or Unreal Engine. The key principle is to preserve the relationship between external data pressure and intimate spatial instability.
+</p>
+
+<div class="footer">
+© Peng Chanjuan, 2026
+</div>
+
+</div>
+
+</body>
+</html>

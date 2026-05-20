@@ -50,6 +50,15 @@ The reusable system structure is documented in [PROJECT_TEMPLATE.md](PROJECT_TEM
 - Purpose: tests a cleaned Scaniverse dorm-room color point cloud inside the current Machine Anxiety system.
 - Guide: [COLOR_POINTCLOUD_MODEL_TEST.md](COLOR_POINTCLOUD_MODEL_TEST.md)
 
+## Heavy Model + Web Audio Revision
+
+- Branch: `local-heavy-model-test-v2`
+- Repository: https://github.com/chanjuanpeng-cell/machine-anxiety-heavy
+- URL: https://machine-anxiety-heavy.vercel.app
+- Portfolio: [portfolio-heavy.html](portfolio-heavy.html)
+- Purpose: develops the work into a heavier Scaniverse dorm-room point-cloud version with naturalised point distribution, delayed data-driven erosion, automatic camera choreography, and Web Audio API sound.
+- Notes: this version is separated from the original submitted Vercel project so the competition-safe URL remains unchanged.
+
 ## Working Rule
 
 Do not merge preview branches into `main` until the submitted version no longer needs to remain unchanged.

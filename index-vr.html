@@ -29,7 +29,7 @@
         <span class="row" id="hud-date">SYSTEM STANDBY</span><br>
         <span class="row" id="hud-rate">--</span><br>
         <span class="row" id="hud-stress">--</span><br>
-        <span class="row" style="color:#666">Desktop: drag to orbit. Quest: click "Enter VR".</span>
+        <span class="row" style="color:#666">Desktop: drag to orbit. Quest: click "Enter VR".<br>In VR — left stick: move, right stick: up/down + turn.</span>
     </div>
     <div id="load-status">LOADING…</div>
 
@@ -55,15 +55,19 @@
             // Original build duplicates ~38% of points for grain. Off by default
             // in VR to cut vertex count (and the per-frame deform cost).
             disableDuplication: true,
-            // Run the (expensive) per-vertex deformation every Nth frame.
-            // 1 = every frame, 2 = half the CPU cost, 3 = a third. Position is
-            // held between updates so motion just gets slightly steppier.
-            deformEveryNFrames: 2,
-            // Where the viewer stands. With 'local-floor' the physical floor is
-            // y=0; we lift the room so its centre sits near eye height and you
-            // are standing *inside* it. Raise/lower to reposition yourself.
-            roomYOffset: 1.25,
+            // Spread the (expensive) per-vertex deformation across N frames:
+            // each frame only ~1/N of the points are recomputed, so the main
+            // thread never stalls long enough to make head-tracking lag.
+            // Higher = smoother turning, slightly softer motion. 1 = all at once.
+            deformSlices: 3,
+            // Starting placement. With 'local-floor' the physical floor is y=0;
+            // we lift the room so its centre sits near eye height and you stand
+            // *inside* it. You can also walk around freely with the thumbsticks.
+            roomYOffset: 1.45,
             roomScale: 1.0,
+            // Thumbstick locomotion (metres/sec) and snap-turn step (degrees).
+            moveSpeed: 1.4,
+            snapTurnDegrees: 30,
             // Auto-start the data cycle on load (desktop) / on VR enter.
             autoPlay: true
         };
@@ -132,6 +136,13 @@
         controls.enableDamping = true;
         controls.target.set(0, VR_CONFIG.roomYOffset, 0);
         controls.update();
+
+        // Player rig ("dolly"): the camera lives inside this group, and the
+        // headset moves the camera *within* it. Moving the dolly moves the
+        // viewer through the room — driven by the thumbsticks in VR.
+        const dolly = new THREE.Group();
+        dolly.add(camera);
+        scene.add(dolly);
 
         // Soft round sprite for each point.
         const circleCanvas = document.createElement('canvas');
@@ -351,6 +362,7 @@
         // Deformation — the artistic core, ported verbatim from animate().
         // Headset/orbit camera is independent; this only moves the points.
         // =====================================================================
+        let deformCursor = 0;
         function deform(progress, nowMs) {
             if (!points) return;
             const pos = points.geometry.attributes.position;
@@ -384,7 +396,15 @@
             const wallErosion = THREE.MathUtils.clamp((erosionMemory - 0.18) * 0.58 + structuralErosion * 0.42 + Math.pow(visualStress, 3) * 0.035, 0, 1);
             const highStressWave = THREE.MathUtils.clamp((visualStress - 0.76) / 0.24, 0, 1);
 
-            for (let i = 0; i < count; i++) {
+            // Process only one slice of the cloud this frame, advancing a rolling
+            // cursor. Spreads the cost so a head-turn never waits on a full pass.
+            const slices = Math.max(1, VR_CONFIG.deformSlices | 0);
+            const sliceSize = Math.ceil(count / slices);
+            const startI = deformCursor;
+            const endI = Math.min(count, startI + sliceSize);
+            deformCursor = endI >= count ? 0 : endI;
+
+            for (let i = startI; i < endI; i++) {
                 const bx = base.getX(i), by = base.getY(i), bz = base.getZ(i);
                 const px = pos.getX(i), py = pos.getY(i), pz = pos.getZ(i);
                 const ceilingWeight = THREE.MathUtils.clamp((by - ceilingCutHeight) / 0.55, 0, 1) * ceilingErasure;
@@ -480,8 +500,50 @@
         // =====================================================================
         const inXR = () => renderer.xr.isPresenting;
 
+        // ---- Thumbstick locomotion (VR only) --------------------------------
+        const _up = new THREE.Vector3(0, 1, 0);
+        const _dir = new THREE.Vector3();
+        const _right = new THREE.Vector3();
+        const _cam = new THREE.Vector3();
+        let snapTurnArmed = true;
+        function updateLocomotion(dt) {
+            const session = renderer.xr.getSession();
+            if (!session) return;
+            let moveX = 0, moveY = 0, vert = 0, turn = 0;
+            for (const src of session.inputSources) {
+                if (!src.gamepad || !src.gamepad.axes) continue;
+                const ax = src.gamepad.axes;
+                const sx = ax.length >= 4 ? ax[2] : ax[0];
+                const sy = ax.length >= 4 ? ax[3] : ax[1];
+                if (src.handedness === 'right') { turn += sx; vert += sy; }
+                else { moveX += sx; moveY += sy; } // left or unknown drives planar move
+            }
+            const dead = 0.15;
+            if (Math.abs(moveX) > dead || Math.abs(moveY) > dead) {
+                camera.getWorldDirection(_dir); _dir.y = 0;
+                if (_dir.lengthSq() > 1e-5) _dir.normalize();
+                _right.crossVectors(_dir, _up).normalize();
+                const step = VR_CONFIG.moveSpeed * dt;
+                dolly.position.addScaledVector(_dir, -moveY * step);
+                dolly.position.addScaledVector(_right, moveX * step);
+            }
+            if (Math.abs(vert) > dead) dolly.position.y += -vert * VR_CONFIG.moveSpeed * dt;
+            if (Math.abs(turn) > 0.7 && snapTurnArmed) {
+                const ang = (turn > 0 ? -1 : 1) * THREE.MathUtils.degToRad(VR_CONFIG.snapTurnDegrees);
+                camera.getWorldPosition(_cam);
+                dolly.position.sub(_cam).applyAxisAngle(_up, ang).add(_cam);
+                dolly.rotateY(ang);
+                snapTurnArmed = false;
+            } else if (Math.abs(turn) < 0.3) {
+                snapTurnArmed = true;
+            }
+        }
+
+        let lastT = performance.now();
         function animate() {
             const nowMs = performance.now();
+            const dt = Math.min(0.05, Math.max(0, (nowMs - lastT) / 1000));
+            lastT = nowMs;
 
             if (exchangeData.length && playbackStartMs) {
                 let t = timelineState(nowMs);
@@ -502,10 +564,7 @@
                     points.material.opacity = POINT_OPACITY + recog * 0.10;
                 }
 
-                frameCounter++;
-                if (frameCounter % Math.max(1, VR_CONFIG.deformEveryNFrames) === 0) {
-                    deform(t.progress, nowMs);
-                }
+                deform(t.progress, nowMs);
 
                 // HUD (desktop only; not visible in immersive VR)
                 if (!inXR()) {
@@ -519,7 +578,8 @@
                 }
             }
 
-            if (!inXR()) controls.update();
+            if (inXR()) updateLocomotion(dt);
+            else controls.update();
             renderer.render(scene, camera);
         }
 

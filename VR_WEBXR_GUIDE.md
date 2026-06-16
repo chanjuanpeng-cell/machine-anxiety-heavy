@@ -163,8 +163,9 @@ Vercel 会自动重新构建那个 Preview，**网址不变**，约一分钟后�
 
 ## 已知限制 / 待办
 
-- **无声音**：生成式音频系统尚未移植（首版刻意去掉，先把帧率单独测干净）。
-  详细移植方案见下方「声音移植方案（下一步）」。
+- ~~**无声音**~~ **已加声音（2026-06-16）**：生成式音频系统已移植，并做了**真 3D 空间化**
+  （HRTF panner + 听者绑头显），转头时声音方位会变。原方案见下方「声音移植方案」（保留作记录），
+  实际落地差异见「声音落地记录」。
 - **无后处理**：Bloom / RGB glitch 等视觉语言在 VR 里暂缺，需 shader 层重写才能上。
 - **房间静止**：VR 里不让房间整体旋转，避免眩晕。
 - **性能旋钮顺序**（掉帧时依次尝试）：`deformSlices` 调大 → `pointKeepRatio` 调小 →
@@ -216,5 +217,30 @@ Vercel 会自动重新构建那个 Preview，**网址不变**，约一分钟后�
 
 ---
 
+## 声音落地记录（2026-06-16 已实现）
+
+按上方方案移植，实际做法与几处取舍：
+
+- **搬入的函数**：`createNoiseBuffer` / `initSoundSystem` / `updateDataDrivenSound` /
+  `triggerDataClick` / `triggerOverloadGlitch`，去掉了 Mixer 调试 UI 与录音相关代码。
+  桌面版的 `SOUND_MIX` / `SOUND_MASTER_GAIN` / `SOUND_LAYER_GAIN` 原值照搬。
+- **2D→3D**：每层 `StereoPanner` 换成 `PannerNode`（`panningModel='HRTF'`,
+  `distanceModel='inverse'`）。位置在文件顶部 `SOUND_POS` 集中配置（世界坐标，房间中心约
+  `(0, roomYOffset, 0)`）：
+  - 机器音/子低频/数据 click 锚在**压力源** `PRESSURE_ORIGIN` 处，贴身定位（refDistance 1.2、rolloff 0.9）。
+  - 房间噪声、空气噪声作**宽环境床**（refDistance 4–5、rolloff 0.2–0.25），走到哪都在、只是方位感弱。
+  - 事件/glitch 噪声放在**远角**，定位明显。
+- **听者绑头显**：`updateAudioListener()` 每帧用 `renderer.xr.getCamera()`（桌面退回普通相机）
+  取世界位姿，朝向/up 向量由相机四元数算，写进 `audioCtx.listener`。所以转头方位才正确。
+- **手势启动**：首次 `pointerdown`/`keydown`（桌面）或 `xr.sessionstart`（Quest）时
+  `initSoundSystem()` 里 `audioCtx.resume()`，绕过自动播放限制。左上角有 "♪ Sound on…" 提示，启动后消失。
+- **高潮/淡出**：`accum = erosionMemory*0.6 + threshold(progress,0.62,0.96)`，喂给音频让屋顶坍塌时鼓胀；
+  outro 段做 0.6 的轻淡出，循环重启时自然续上。
+
+> 想调音量/方位：改顶部 `SOUND_MIX`（各层增益）和 `SOUND_POS`（各层世界坐标）。
+> HRTF 在头显里比桌面闷，若太糊先降 `SOUND_MIX.room/air` 或把 ambient 床的 rolloff 再调小。
+
+---
+
 *记录于 VR 原型第二版：分片形变 + 手柄走动。后续如有大改请同步更新本文件。*
-*声音移植方案补于 2026-06-16，尚未实现。*
+*声音移植方案补于 2026-06-16；同日完成 3D 空间化音频落地（见「声音落地记录」）。*

@@ -30,7 +30,8 @@
         <span class="row" id="hud-rate">--</span><br>
         <span class="row" id="hud-stress">--</span><br>
         <span class="row" style="color:#666">Desktop: drag to orbit. Quest: click "Enter VR".<br>In VR — left stick: move, right stick: up/down + turn.</span><br>
-        <span class="row" id="sound-hint" style="color:#7a9a7a">♪ Sound on — click / press any key / enter VR to start.</span>
+        <span class="row" id="sound-hint" style="color:#7a9a7a">♪ Sound on — click / press any key / enter VR to start.</span><br>
+        <span class="row" style="color:#666">Press <b style="color:#999">H</b> to hide this panel (for recording).</span>
     </div>
     <div id="load-status">LOADING…</div>
 
@@ -150,7 +151,8 @@
         renderer.xr.enabled = true;
         renderer.xr.setReferenceSpaceType('local-floor');
         document.body.appendChild(renderer.domElement);
-        document.body.appendChild(VRButton.createButton(renderer));
+        const vrButton = VRButton.createButton(renderer);
+        document.body.appendChild(vrButton);
 
         // Desktop-only orbit preview. The XR camera overrides this in-headset,
         // so we just disable damping fighting when a session is active.
@@ -846,6 +848,19 @@
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Press H to hide/show the top-left info panel — handy for clean screen
+        // recordings. Also toggles the loading text if it's still showing.
+        const infoPanel = document.getElementById('info');
+        let panelHidden = false;
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'h' || e.key === 'H') {
+                panelHidden = !panelHidden;
+                if (infoPanel) infoPanel.style.display = panelHidden ? 'none' : 'block';
+                if (loadStatus) loadStatus.style.visibility = panelHidden ? 'hidden' : 'visible';
+                if (vrButton) vrButton.style.display = panelHidden ? 'none' : '';
+            }
         });
     </script>
 </body>

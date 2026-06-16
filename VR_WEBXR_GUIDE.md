@@ -24,6 +24,7 @@
 | 推送远端 | `heavy` → `git@github.com:chanjuanpeng-cell/machine-anxiety-heavy.git` |
 | Vercel 项目 | **machine-anxiety-heavy** 的 Preview 部署（不是中间那个旧的 machine-anxiety） |
 | 预览网址 | `https://machine-anxiety-heavy-git-vr-2ceee9-chanjuanpeng-cells-projects.vercel.app/index-vr.html` |
+| 短网址（生产域名，推荐分享） | `https://machine-anxiety-heavy.vercel.app/vr`（2026-06-16 起，见下方「生产域名短路径 /vr」） |
 
 > 注意：桌面版（`index.html`）完全没动，VR 版是**新增文件**，互不影响。
 
@@ -115,6 +116,36 @@ Vercel 会自动重新构建那个 Preview，**网址不变**，约一分钟后�
 
 ---
 
+## 生产域名短路径 /vr（2026-06-16 新增）
+
+**背景**：分支预览网址太长（`...-git-vr-...-chanjuanpeng-cells-projects.vercel.app/index-vr.html`），
+在 Quest 里手输很痛苦。改用生产域名上的一条短路径，方便分享与输入。
+
+**最终网址**：`https://machine-anxiety-heavy.vercel.app/vr`
+（旧的预览长链接和 `/index-vr.html` 仍然有效）
+
+**做法**：往**生产分支 `main`** 上新增两个文件（桌面版 `index.html` 一行没动，风险极低、可回退）：
+
+1. `index-vr.html`（从 `vr-webxr-v2` 取来；它依赖的模型 585k 和 `chronicle_data.json` 桌面版已在 `main` 上，无需额外搬运）。
+2. `vercel.json`，只加一条精确重写：
+
+```json
+{
+  "rewrites": [
+    { "source": "/vr", "destination": "/index-vr.html" }
+  ]
+}
+```
+
+`/vr` 只匹配这一个路径，根路径（桌面版）和其他地址都不受影响。
+
+**回退**：删掉 `main` 上这两个文件再推一次即可恢复原状。
+
+> 说明：VR 代码仍以 `vr-webxr-v2` 分支为开发主线；`main` 上的 `index-vr.html` 是「拿来发布」的副本。
+> 改完 VR 后若要更新生产 `/vr`，需把新的 `index-vr.html` 同步到 `main` 再推。
+
+---
+
 ## 踩过的坑（排错记录）
 
 - **Quest 打开要登录 Vercel 且登了也进不去**：是 Vercel「Deployment Protection →
@@ -123,6 +154,10 @@ Vercel 会自动重新构建那个 Preview，**网址不变**，约一分钟后�
   用 `sudo xcode-select -s /Library/Developer/CommandLineTools` 切到独立的 CLT 即可修复。
 - **命令「没反应」**：多半是把 git 命令敲进了正在跑 `http.server` 的终端窗口；
   那个窗口被服务器占用，命令不会执行。先 `Control+C` 停服务器，或另开终端窗口。
+- **`git fetch/push` 报 `rev-list died of signal 10`（SIGBUS）**：本地仓库对象库损坏
+  （2026-06-16 遇到）。删 `.git/objects/info/commit-graph` 缓存没修好，说明损坏更深。
+  **绕过办法**：在 `/tmp` 全新 `git clone` 一份干净副本，在干净副本里改文件、推送，
+  不依赖坏掉的本地仓库。事后再用 `git fsck --full` 排查，或干脆把本地目录重新 clone 一份替换。
 
 ---
 

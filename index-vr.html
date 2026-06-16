@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Machine Anxiety — VR (WebXR prototype)</title>
+<style>
+    html, body { margin: 0; height: 100%; background: #030303; overflow: hidden; font-family: monospace; color: #cfcfcf; }
+    #info {
+        position: absolute; top: 16px; left: 16px; z-index: 20;
+        font-size: 12px; letter-spacing: 0.5px; line-height: 1.6;
+        background: rgba(0,0,0,0.55); padding: 10px 14px; backdrop-filter: blur(6px);
+        max-width: 320px;
+    }
+    #info b { color: #f0f0f0; letter-spacing: 1px; }
+    #info .row { color: #9a9a9a; }
+    #load-status {
+        position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+        z-index: 30; font-size: 13px; letter-spacing: 2px; color: #bdbdbd;
+    }
+    #load-status.error { color: #e2554b; }
+    /* three.js VRButton is appended to body automatically */
+</style>
+</head>
+<body>
+    <div id="info">
+        <b>MACHINE ANXIETY — VR</b><br>
+        <span class="row">A private interior destabilised by GBP/CNY exchange-rate fluctuations.</span><br>
+        <span class="row" id="hud-date">SYSTEM STANDBY</span><br>
+        <span class="row" id="hud-rate">--</span><br>
+        <span class="row" id="hud-stress">--</span><br>
+        <span class="row" style="color:#666">Desktop: drag to orbit. Quest: click "Enter VR".<br>In VR — left stick: move, right stick: up/down + turn.</span>
+    </div>
+    <div id="load-status">LOADING…</div>
+
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { PLYLoader } from 'three/addons/loaders/PLYLoader.js';
+        import { VRButton } from 'three/addons/webxr/VRButton.js';
+
+        // =====================================================================
+        // VR PROTOTYPE CONFIG — tune these on Quest after measuring framerate.
+        // The whole point of this build is to find a point-count / update-rate
+        // that holds ~72fps on standalone hardware. Start conservative.
+        // =====================================================================
+        const VR_CONFIG = {
+            // Point-cloud density. 1.0 = keep every point; 0.5 = keep half, etc.
+            // Lowest visual risk first lever to pull if framerate is bad.
+            pointKeepRatio: 1.0,
+            // Original build duplicates ~38% of points for grain. Off by default
+            // in VR to cut vertex count (and the per-frame deform cost).
+            disableDuplication: true,
+            // Spread the (expensive) per-vertex deformation across N frames:
+            // each frame only ~1/N of the points are recomputed, so the main
+            // thread never stalls long enough to make head-tracking lag.
+            // Higher = smoother turning, slightly softer motion. 1 = all at once.
+            deformSlices: 3,
+            // Starting placement. With 'local-floor' the physical floor is y=0;
+            // we lift the room so its centre sits near eye height and you stand
+            // *inside* it. You can also walk around freely with the thumbsticks.
+            roomYOffset: 1.45,
+            roomScale: 1.0,
+            // Thumbstick locomotion (metres/sec) and snap-turn step (degrees).
+            moveSpeed: 1.4,
+            snapTurnDegrees: 30,
+            // Auto-start the data cycle on load (desktop) / on VR enter.
+            autoPlay: true
+        };
+
+        // Pick a lighter model here if 585k is too heavy on Quest.
+        // Options present in /models: 300k, 500k, 585k.
+        const MODEL_PATH = 'models/scaniverse_room_clean_585k.ply';
+
+        // ---- data → stress mapping (unchanged from the desktop build) -------
+        const BASELINE_RATE = 9.00;
+        const RATE_RANGE_FOR_DEVIATION = 0.72;
+        const RATE_RANGE_FOR_VELOCITY = 0.32;
+        const SHOCK_THRESHOLD = 0.18;
+        const DEVIATION_WEIGHT = 0.62;
+        const VELOCITY_WEIGHT = 0.30;
+        const SHOCK_WEIGHT = 0.26;
+
+        // ---- timeline (one looping cycle) -----------------------------------
+        const INTRO_HOLD_MS = 1500;
+        const DATA_RUN_MS = 52000;
+        const OUTRO_HOLD_MS = 4000;
+        const TOTAL_MS = INTRO_HOLD_MS + DATA_RUN_MS + OUTRO_HOLD_MS;
+
+        // ---- erosion / deformation params (ported from SYSTEM_CONFIG) -------
+        const ERASURE = {
+            startAnxiety: 1.0, fullAnxiety: 1.0,
+            overheadStartAnxiety: 1.0, overheadFullAnxiety: 1.0,
+            heightStart: 1.62, heightFull: 0.78,
+            ceilingDrift: 15.0, roomDeformBoost: 0.310,
+            wallDrift: 5.4, blankBrightness: 0.50, blankChroma: 0.20,
+            memoryRiseRate: 0.030, memoryFallRate: 0.007, memoryShockRate: 0.060,
+            memoryLeakRate: 0.0015, highStressWave: 0.030,
+            gate: {
+                startProgress: 0.24, fullProgress: 1.00, memoryBoost: 0.88,
+                objectStartProgress: 0.28, objectFullProgress: 0.62,
+                structureStartProgress: 0.78, structureFullProgress: 1.00,
+                breathFullProgress: 0.08, objectDrift: 3.2
+            }
+        };
+        const PRESSURE_ORIGIN = new THREE.Vector3(0.75, 0.2, 1.0);
+        const PRESSURE_RADIUS = 3.9;
+        const RECOGNITION_HOLD_ANXIETY = 0.18;
+        const POINT_SIZE = 0.0100;
+        const POINT_OPACITY = 0.92;
+
+        // =====================================================================
+        // Scene / renderer — WebXR enabled, NO post-processing composer.
+        // =====================================================================
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x030303, 0.04);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.01, 1000);
+        camera.position.set(0, VR_CONFIG.roomYOffset, 3.2); // desktop preview start
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.xr.enabled = true;
+        renderer.xr.setReferenceSpaceType('local-floor');
+        document.body.appendChild(renderer.domElement);
+        document.body.appendChild(VRButton.createButton(renderer));
+
+        // Desktop-only orbit preview. The XR camera overrides this in-headset,
+        // so we just disable damping fighting when a session is active.
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.target.set(0, VR_CONFIG.roomYOffset, 0);
+        controls.update();
+
+        // Player rig ("dolly"): the camera lives inside this group, and the
+        // headset moves the camera *within* it. Moving the dolly moves the
+        // viewer through the room — driven by the thumbsticks in VR.
+        const dolly = new THREE.Group();
+        dolly.add(camera);
+        scene.add(dolly);
+
+        // Soft round sprite for each point.
+        const circleCanvas = document.createElement('canvas');
+        circleCanvas.width = 32; circleCanvas.height = 32;
+        const cctx = circleCanvas.getContext('2d');
+        cctx.beginPath(); cctx.arc(16, 16, 14, 0, Math.PI * 2); cctx.fillStyle = 'white'; cctx.fill();
+        const circleTexture = new THREE.CanvasTexture(circleCanvas);
+
+        const loadStatus = document.getElementById('load-status');
+        const hudDate = document.getElementById('hud-date');
+        const hudRate = document.getElementById('hud-rate');
+        const hudStress = document.getElementById('hud-stress');
+        function setLoadStatus(msg, isError = false) {
+            loadStatus.textContent = msg || '';
+            loadStatus.classList.toggle('error', isError);
+            loadStatus.style.display = msg ? 'block' : 'none';
+        }
+
+        let isRoomLoaded = false, isDataLoaded = false;
+        function updateLoadStatus() {
+            if (isRoomLoaded && isDataLoaded) setLoadStatus('');
+            else if (!isRoomLoaded) setLoadStatus('LOADING ROOM');
+            else setLoadStatus('LOADING EXCHANGE DATA');
+        }
+
+        // =====================================================================
+        // Geometry helpers (axis remap + grain + optional decimation)
+        // =====================================================================
+        function deterministicNoise(seed) {
+            const v = Math.sin(seed * 12.9898) * 43758.5453;
+            return v - Math.floor(v);
+        }
+        function signedNoise(seed) { return deterministicNoise(seed) * 2 - 1; }
+
+        function remapScaniverseRoomAxes(geometry) {
+            const p = geometry.attributes.position;
+            for (let i = 0; i < p.count; i++) {
+                const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+                p.setXYZ(i, x, z, -y);
+            }
+            p.needsUpdate = true;
+            geometry.computeBoundingBox();
+        }
+
+        // Combines the original irregularizer (jitter + optional duplication +
+        // colour variation) with optional decimation, in one pass.
+        function processGeometry(geometry) {
+            const src = geometry.attributes.position;
+            const srcCol = geometry.attributes.color;
+            const jitter = 0.011, duplicateJitter = 0.018, colorVariation = 0.12;
+            const duplicateRatio = VR_CONFIG.disableDuplication ? 0 : 0.38;
+            const keep = THREE.MathUtils.clamp(VR_CONFIG.pointKeepRatio, 0.02, 1);
+            const positions = [];
+            const colors = srcCol ? [] : null;
+
+            for (let i = 0; i < src.count; i++) {
+                if (keep < 1 && deterministicNoise(i * 1.013 + 0.5) > keep) continue;
+                const x = src.getX(i), y = src.getY(i), z = src.getZ(i);
+                const jx = signedNoise(i * 3.17 + 11.1) * jitter;
+                const jy = signedNoise(i * 4.91 + 23.7) * jitter * 0.55;
+                const jz = signedNoise(i * 6.43 + 41.9) * jitter;
+                positions.push(x + jx, y + jy, z + jz);
+                if (srcCol) {
+                    const shade = 1 + signedNoise(i * 2.73 + 8.2) * colorVariation;
+                    colors.push(
+                        THREE.MathUtils.clamp(srcCol.getX(i) * shade, 0, 1),
+                        THREE.MathUtils.clamp(srcCol.getY(i) * shade, 0, 1),
+                        THREE.MathUtils.clamp(srcCol.getZ(i) * shade, 0, 1)
+                    );
+                }
+                if (duplicateRatio > 0 && deterministicNoise(i * 9.31 + 5.4) < duplicateRatio) {
+                    const dx = signedNoise(i * 7.13 + 101.2) * duplicateJitter;
+                    const dy = signedNoise(i * 5.57 + 77.7) * duplicateJitter * 0.65;
+                    const dz = signedNoise(i * 8.89 + 13.5) * duplicateJitter;
+                    positions.push(x + dx, y + dy, z + dz);
+                    if (srcCol) {
+                        const shade = 0.76 + deterministicNoise(i * 4.41 + 19.8) * 0.22;
+                        colors.push(
+                            THREE.MathUtils.clamp(srcCol.getX(i) * shade, 0, 1),
+                            THREE.MathUtils.clamp(srcCol.getY(i) * shade, 0, 1),
+                            THREE.MathUtils.clamp(srcCol.getZ(i) * shade, 0, 1)
+                        );
+                    }
+                }
+            }
+            const out = new THREE.BufferGeometry();
+            out.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
+            if (colors) out.setAttribute('color', new THREE.BufferAttribute(new Float32Array(colors), 3));
+            out.computeBoundingBox();
+            return out;
+        }
+
+        let points = null;
+
+        new PLYLoader().load(MODEL_PATH, (geometry) => {
+            remapScaniverseRoomAxes(geometry);
+            geometry = processGeometry(geometry);
+            const basePositions = new Float32Array(geometry.attributes.position.array);
+            geometry.setAttribute('basePosition', new THREE.BufferAttribute(basePositions, 3));
+
+            const material = new THREE.PointsMaterial({
+                color: 0xffffff, size: POINT_SIZE, map: circleTexture,
+                alphaTest: 0.08, transparent: true, opacity: POINT_OPACITY,
+                vertexColors: true, depthWrite: false
+            });
+            points = new THREE.Points(geometry, material);
+            geometry.computeBoundingBox();
+            const center = new THREE.Vector3();
+            geometry.boundingBox.getCenter(center);
+            // Recentre to origin, scale, then lift so the viewer stands inside.
+            points.position.set(-center.x, -center.y, -center.z);
+            const rig = new THREE.Group();
+            rig.scale.setScalar(VR_CONFIG.roomScale);
+            rig.position.y = VR_CONFIG.roomYOffset;
+            rig.add(points);
+            scene.add(rig);
+
+            console.log('[VR] point count =', geometry.attributes.position.count);
+            isRoomLoaded = true; updateLoadStatus();
+        }, undefined, () => setLoadStatus('ROOM FAILED TO LOAD', true));
+
+        // =====================================================================
+        // Data
+        // =====================================================================
+        let exchangeData = [];
+        fetch('chronicle_data.json')
+            .then(r => { if (!r.ok) throw new Error('data'); return r.json(); })
+            .then(d => { exchangeData = d; isDataLoaded = true; updateLoadStatus(); if (VR_CONFIG.autoPlay) startPlayback(); })
+            .catch(() => setLoadStatus('EXCHANGE DATA FAILED TO LOAD', true));
+
+        function getMappedAnxiety(index) {
+            if (!exchangeData.length) return { anxiety: 0, deviation: 0, velocity: 0, shock: 0, movement: 0, direction: 0 };
+            const a = exchangeData[index];
+            const prev = exchangeData[Math.max(0, index - 1)];
+            const direction = a.rate - prev.rate;
+            const movement = Math.abs(direction);
+            const deviation = THREE.MathUtils.clamp(Math.abs(a.rate - BASELINE_RATE) / RATE_RANGE_FOR_DEVIATION, 0, 1);
+            const velocity = THREE.MathUtils.clamp(movement / RATE_RANGE_FOR_VELOCITY, 0, 1);
+            const shock = THREE.MathUtils.clamp((movement - SHOCK_THRESHOLD) / RATE_RANGE_FOR_VELOCITY, 0, 1);
+            const anxiety = THREE.MathUtils.clamp(deviation * DEVIATION_WEIGHT + velocity * VELOCITY_WEIGHT + shock * SHOCK_WEIGHT, 0, 1);
+            return { anxiety, deviation, velocity, shock, movement, direction };
+        }
+
+        function easeInOutSine(t) { return -(Math.cos(Math.PI * THREE.MathUtils.clamp(t, 0, 1)) - 1) / 2; }
+        function getThresholdBlend(value, start, full) {
+            if (full <= start) return value >= full ? 1 : 0;
+            return easeInOutSine(THREE.MathUtils.clamp((value - start) / (full - start), 0, 1));
+        }
+
+        function getDeterministicErosionMemory(progress, forcedStress = null) {
+            if (exchangeData.length < 2) return 0;
+            const gate = ERASURE.gate;
+            const gateBlend = getThresholdBlend(progress, gate.startProgress, gate.fullProgress);
+            if (gateBlend <= 0) return 0;
+            const segmentCount = exchangeData.length - 1;
+            const segmentSeconds = (DATA_RUN_MS / 1000) / segmentCount;
+            const exactSegment = THREE.MathUtils.clamp(progress, 0, 1) * segmentCount;
+            const gateStartSegment = THREE.MathUtils.clamp(gate.startProgress, 0, 1) * segmentCount;
+            let memory = 0;
+            for (let s = 0; s < segmentCount; s++) {
+                const beforeGate = THREE.MathUtils.clamp(gateStartSegment - s, 0, 1);
+                const atProgress = THREE.MathUtils.clamp(exactSegment - s, 0, 1);
+                const portion = Math.max(0, atProgress - beforeGate);
+                if (portion <= 0 && s > exactSegment) break;
+                if (portion <= 0) continue;
+                const mapped = getMappedAnxiety(s + 1);
+                const stress = forcedStress === null ? mapped.anxiety : forcedStress;
+                const rising = THREE.MathUtils.clamp((mapped.direction || 0) / RATE_RANGE_FOR_VELOCITY, 0, 1);
+                const falling = THREE.MathUtils.clamp(-(mapped.direction || 0) / RATE_RANGE_FOR_VELOCITY, 0, 1);
+                const shockP = mapped.shock || 0;
+                const build = ERASURE.memoryRiseRate * stress + ERASURE.memoryShockRate * shockP + ERASURE.memoryRiseRate * rising;
+                const slow = ERASURE.memoryFallRate * falling + 0.004 * stress;
+                const leak = ERASURE.memoryLeakRate * (1 - stress) * (1 - shockP);
+                memory = THREE.MathUtils.clamp(memory + (build + slow - leak) * segmentSeconds * portion, 0, 1);
+            }
+            return THREE.MathUtils.clamp(memory * gateBlend * gate.memoryBoost, 0, 1);
+        }
+
+        function getDataIndexFromProgress(progress) {
+            if (!exchangeData.length) return 0;
+            return Math.min(exchangeData.length - 1, Math.floor(progress * exchangeData.length));
+        }
+
+        // =====================================================================
+        // Playback state
+        // =====================================================================
+        let playbackStartMs = 0;
+        let currentAnxiety = 0, targetAnxiety = 0, erosionMemory = 0;
+        let currentDayIndex = 0;
+        let frameCounter = 0;
+
+        function startPlayback() {
+            playbackStartMs = performance.now();
+            currentAnxiety = 0; targetAnxiety = 0; erosionMemory = 0; currentDayIndex = 0;
+            resetPositions();
+        }
+        function resetPositions() {
+            if (!points) return;
+            const pos = points.geometry.attributes.position;
+            const base = points.geometry.attributes.basePosition;
+            for (let i = 0; i < pos.count; i++) pos.setXYZ(i, base.getX(i), base.getY(i), base.getZ(i));
+            pos.needsUpdate = true;
+        }
+
+        function timelineState(nowMs) {
+            const elapsed = THREE.MathUtils.clamp(nowMs - playbackStartMs, 0, TOTAL_MS);
+            const dataElapsed = THREE.MathUtils.clamp(elapsed - INTRO_HOLD_MS, 0, DATA_RUN_MS);
+            return {
+                progress: DATA_RUN_MS > 0 ? dataElapsed / DATA_RUN_MS : 0,
+                inIntro: elapsed < INTRO_HOLD_MS,
+                inOutro: elapsed >= INTRO_HOLD_MS + DATA_RUN_MS,
+                isComplete: (nowMs - playbackStartMs) >= TOTAL_MS
+            };
+        }
+
+        // =====================================================================
+        // Deformation — the artistic core, ported verbatim from animate().
+        // Headset/orbit camera is independent; this only moves the points.
+        // =====================================================================
+        let deformCursor = 0;
+        function deform(progress, nowMs) {
+            if (!points) return;
+            const pos = points.geometry.attributes.position;
+            const base = points.geometry.attributes.basePosition;
+            const colors = points.geometry.attributes.color;
+            const count = pos.count;
+            const time = nowMs * 0.00115;
+            const visualStress = currentAnxiety;
+
+            let finalInstability = (visualStress <= 0.55
+                ? (visualStress / 0.55) * 0.0065
+                : 0.0065 + Math.pow((visualStress - 0.55) / 0.45, 2) * 0.095) * 0.14;
+            const pressureDrive = THREE.MathUtils.clamp((visualStress - 0.22) / 0.78, 0, 1) * 0.35;
+            const pressurePulse = 0.78 + 0.22 * Math.sin(time * 2.4);
+            const gate = ERASURE.gate;
+            const breathDrive = getThresholdBlend(progress, 0, gate.breathFullProgress);
+            const structuralErosion = getThresholdBlend(progress, gate.structureStartProgress, gate.structureFullProgress);
+            const objectPhase = getThresholdBlend(progress, gate.objectStartProgress, gate.objectFullProgress);
+            const breathStress = breathDrive * (0.25 + visualStress * 0.75);
+            finalInstability += breathStress * 0.016 + structuralErosion * 0.003;
+
+            const rawCeilingErasure = getThresholdBlend(visualStress, ERASURE.startAnxiety, ERASURE.fullAnxiety);
+            const ceilingErasure = THREE.MathUtils.clamp(Math.max(rawCeilingErasure, structuralErosion * 0.96), 0, 1);
+            const ceilingCutHeight = THREE.MathUtils.lerp(ERASURE.heightStart, ERASURE.heightFull, ceilingErasure);
+            const rawRoomExposure = getThresholdBlend(visualStress, ERASURE.overheadStartAnxiety, ERASURE.overheadFullAnxiety);
+            const roomExposure = THREE.MathUtils.clamp(Math.max(rawRoomExposure, breathStress * 0.92, structuralErosion * 0.50), 0, 1);
+
+            erosionMemory = getDeterministicErosionMemory(progress, null);
+            const objectErosion = THREE.MathUtils.clamp(objectPhase * 0.26 + (erosionMemory - 0.02) * 0.36 + Math.pow(visualStress, 3) * 0.07, 0, 0.56);
+            const roofErosion = THREE.MathUtils.clamp(erosionMemory * 0.86 + structuralErosion * 0.58 + Math.pow(visualStress, 3) * 0.05, 0, 1);
+            const wallErosion = THREE.MathUtils.clamp((erosionMemory - 0.18) * 0.58 + structuralErosion * 0.42 + Math.pow(visualStress, 3) * 0.035, 0, 1);
+            const highStressWave = THREE.MathUtils.clamp((visualStress - 0.76) / 0.24, 0, 1);
+
+            // Process only one slice of the cloud this frame, advancing a rolling
+            // cursor. Spreads the cost so a head-turn never waits on a full pass.
+            const slices = Math.max(1, VR_CONFIG.deformSlices | 0);
+            const sliceSize = Math.ceil(count / slices);
+            const startI = deformCursor;
+            const endI = Math.min(count, startI + sliceSize);
+            deformCursor = endI >= count ? 0 : endI;
+
+            for (let i = startI; i < endI; i++) {
+                const bx = base.getX(i), by = base.getY(i), bz = base.getZ(i);
+                const px = pos.getX(i), py = pos.getY(i), pz = pos.getZ(i);
+                const ceilingWeight = THREE.MathUtils.clamp((by - ceilingCutHeight) / 0.55, 0, 1) * ceilingErasure;
+                const erasureHash = 0.5 + 0.5 * Math.sin(i * 17.371 + bx * 3.7 + bz * 2.9);
+                const r = colors ? colors.getX(i) : 0.5;
+                const g = colors ? colors.getY(i) : 0.5;
+                const b = colors ? colors.getZ(i) : 0.5;
+                const brightness = (r + g + b) / 3;
+                const chroma = Math.max(r, g, b) - Math.min(r, g, b);
+                const blankSurface = THREE.MathUtils.clamp((brightness - ERASURE.blankBrightness) / 0.28, 0, 1) * THREE.MathUtils.clamp((ERASURE.blankChroma - chroma) / ERASURE.blankChroma, 0, 1);
+                const shellWall = THREE.MathUtils.clamp((Math.abs(bx - 1.25) - 1.03) / 0.42, 0, 1) + THREE.MathUtils.clamp((Math.abs(bz) - 2.55) / 0.62, 0, 1);
+                const wallHeight = THREE.MathUtils.clamp((by - 0.45) / 0.75, 0, 1) * THREE.MathUtils.clamp((2.55 - by) / 0.70, 0, 1);
+                const blankWallWeight = THREE.MathUtils.clamp(shellWall, 0, 1) * wallHeight * blankSurface * wallErosion;
+                const interiorDetail = (1 - THREE.MathUtils.clamp(shellWall, 0, 1)) * (1 - ceilingWeight);
+                const attachmentHeight = THREE.MathUtils.clamp((by - 0.18) / 0.52, 0, 1) * THREE.MathUtils.clamp((1.82 - by) / 0.82, 0, 1);
+                const attachmentTexture = THREE.MathUtils.clamp((chroma - 0.035) / 0.22, 0, 1) * 0.55 + THREE.MathUtils.clamp((brightness - 0.22) / 0.42, 0, 1) * 0.45;
+                const attachedObjectWeight = interiorDetail * attachmentHeight * attachmentTexture;
+
+                const dist = Math.sqrt(bx * bx + by * by + bz * bz);
+                const edgeWeight = Math.min(1, (1.0 - Math.exp(-dist * 1.45)) * 1.35);
+                const pressureDistance = Math.sqrt(
+                    Math.pow(bx - PRESSURE_ORIGIN.x, 2) +
+                    Math.pow(by - PRESSURE_ORIGIN.y, 2) +
+                    Math.pow(bz - PRESSURE_ORIGIN.z, 2)
+                );
+                const pressureWeight = Math.pow(THREE.MathUtils.clamp(1 - pressureDistance / PRESSURE_RADIUS, 0, 1), 1.7) * pressureDrive;
+
+                const fieldA = Math.sin(bx * 2.9 + time * 1.20) * Math.cos(by * 2.4 + time * 0.95);
+                const fieldB = Math.cos(bz * 2.7 - time * 1.08) * Math.sin(by * 2.1 + time * 0.84);
+                const fieldC = Math.sin((bx + bz) * 2.0 + time * 0.76);
+                const scanSlice = Math.sin((bx * 5.7) + (bz * 3.2) - time * 2.15);
+                const scanBreak = pressureWeight * pressureWeight * Math.max(0, scanSlice) * pressurePulse;
+
+                const radialLen = Math.max(0.0001, dist);
+                const radialX = bx / radialLen, radialY = by / radialLen, radialZ = bz / radialLen;
+                const pressureLen = Math.max(0.0001, pressureDistance);
+                const pressureX = (bx - PRESSURE_ORIGIN.x) / pressureLen;
+                const pressureY = (by - PRESSURE_ORIGIN.y) / pressureLen;
+                const pressureZ = (bz - PRESSURE_ORIGIN.z) / pressureLen;
+
+                const baseOutward = finalInstability * edgeWeight * 1.35;
+                const baseFlow = finalInstability * (0.55 + edgeWeight * 1.05);
+
+                let targetX = bx + radialX * baseOutward + fieldA * baseFlow * 0.90 + fieldC * baseFlow * 0.30;
+                let targetY = by + radialY * baseOutward * 0.50 + fieldB * baseFlow * 0.40;
+                let targetZ = bz + radialZ * baseOutward + fieldB * baseFlow * 0.74 + fieldC * baseFlow * 0.26;
+
+                targetX += pressureX * scanBreak * 0.22 + pressureWeight * fieldA * 0.038;
+                targetY += pressureY * scanBreak * 0.075 + pressureWeight * fieldB * 0.018;
+                targetZ += pressureZ * scanBreak * 0.18 + pressureWeight * fieldC * 0.036;
+
+                if (highStressWave > 0.01) {
+                    const wave = Math.sin(bx * 3.4 + bz * 2.1 + time * 3.0) * Math.cos(by * 2.8 - time * 2.1);
+                    const waveAmount = highStressWave * highStressWave * ERASURE.highStressWave * (0.5 + edgeWeight * 0.7);
+                    targetX += fieldA * waveAmount + pressureX * waveAmount * 0.45;
+                    targetY += wave * waveAmount * 0.45;
+                    targetZ += fieldB * waveAmount + pressureZ * waveAmount * 0.45;
+                }
+
+                const roofRegion = 0.08 + erasureHash * 0.70 + 0.10 * Math.sin(bx * 1.9 + bz * 1.2);
+                const wallRegion = 0.22 + erasureHash * 0.66 + 0.12 * Math.sin(bz * 1.6 + by * 2.1);
+                const objectRegion = 0.16 + erasureHash * 0.70 + 0.10 * Math.sin(bx * 2.6 + bz * 1.8 + by * 1.4);
+                const objectRemoval = THREE.MathUtils.clamp((objectErosion - objectRegion) / 0.30, 0, 1) * THREE.MathUtils.clamp(attachedObjectWeight * 1.15, 0, 1);
+                const roofRemoval = THREE.MathUtils.clamp((roofErosion - roofRegion) / 0.20, 0, 1) * THREE.MathUtils.clamp(ceilingWeight * 1.4, 0, 1);
+                const wallRemoval = THREE.MathUtils.clamp((wallErosion - wallRegion) / 0.22, 0, 1) * THREE.MathUtils.clamp(blankWallWeight * 1.3, 0, 1);
+                const surfaceRemoval = Math.max(objectRemoval, roofRemoval, wallRemoval);
+
+                if (surfaceRemoval > 0.01) {
+                    const driftAmount = roofRemoval >= wallRemoval && roofRemoval >= objectRemoval
+                        ? ERASURE.ceilingDrift
+                        : wallRemoval >= objectRemoval ? ERASURE.wallDrift : gate.objectDrift;
+                    const drift = surfaceRemoval * surfaceRemoval * driftAmount;
+                    const side = signedNoise(i * 2.11 + 301.4);
+                    targetX += side * drift * 0.10 + pressureX * drift * 0.020;
+                    targetY += drift * (0.95 + erasureHash * 0.55);
+                    targetZ += signedNoise(i * 3.73 + 89.2) * drift * 0.10 + pressureZ * drift * 0.020;
+                } else if (roomExposure > 0.01) {
+                    const roomInteriorWeight = THREE.MathUtils.clamp((1.45 - by) / 1.95, 0, 1) * (1 - ceilingWeight) * (1 - blankWallWeight);
+                    const roomShift = roomExposure * ERASURE.roomDeformBoost * roomInteriorWeight * (0.35 + edgeWeight * 0.45);
+                    targetX += fieldA * roomShift * 0.70 + pressureX * roomShift * 0.25;
+                    targetY += fieldB * roomShift * 0.20;
+                    targetZ += fieldC * roomShift * 0.55 + pressureZ * roomShift * 0.20;
+                }
+
+                pos.setXYZ(i, px + (targetX - px) * 0.20, py + (targetY - py) * 0.20, pz + (targetZ - pz) * 0.20);
+            }
+            pos.needsUpdate = true;
+        }
+
+        // =====================================================================
+        // Render loop — setAnimationLoop drives both desktop rAF and the XR
+        // session at headset cadence.
+        // =====================================================================
+        const inXR = () => renderer.xr.isPresenting;
+
+        // ---- Thumbstick locomotion (VR only) --------------------------------
+        const _up = new THREE.Vector3(0, 1, 0);
+        const _dir = new THREE.Vector3();
+        const _right = new THREE.Vector3();
+        const _cam = new THREE.Vector3();
+        let snapTurnArmed = true;
+        function updateLocomotion(dt) {
+            const session = renderer.xr.getSession();
+            if (!session) return;
+            let moveX = 0, moveY = 0, vert = 0, turn = 0;
+            for (const src of session.inputSources) {
+                if (!src.gamepad || !src.gamepad.axes) continue;
+                const ax = src.gamepad.axes;
+                const sx = ax.length >= 4 ? ax[2] : ax[0];
+                const sy = ax.length >= 4 ? ax[3] : ax[1];
+                if (src.handedness === 'right') { turn += sx; vert += sy; }
+                else { moveX += sx; moveY += sy; } // left or unknown drives planar move
+            }
+            const dead = 0.15;
+            if (Math.abs(moveX) > dead || Math.abs(moveY) > dead) {
+                camera.getWorldDirection(_dir); _dir.y = 0;
+                if (_dir.lengthSq() > 1e-5) _dir.normalize();
+                _right.crossVectors(_dir, _up).normalize();
+                const step = VR_CONFIG.moveSpeed * dt;
+                dolly.position.addScaledVector(_dir, -moveY * step);
+                dolly.position.addScaledVector(_right, moveX * step);
+            }
+            if (Math.abs(vert) > dead) dolly.position.y += -vert * VR_CONFIG.moveSpeed * dt;
+            if (Math.abs(turn) > 0.7 && snapTurnArmed) {
+                const ang = (turn > 0 ? -1 : 1) * THREE.MathUtils.degToRad(VR_CONFIG.snapTurnDegrees);
+                camera.getWorldPosition(_cam);
+                dolly.position.sub(_cam).applyAxisAngle(_up, ang).add(_cam);
+                dolly.rotateY(ang);
+                snapTurnArmed = false;
+            } else if (Math.abs(turn) < 0.3) {
+                snapTurnArmed = true;
+            }
+        }
+
+        let lastT = performance.now();
+        function animate() {
+            const nowMs = performance.now();
+            const dt = Math.min(0.05, Math.max(0, (nowMs - lastT) / 1000));
+            lastT = nowMs;
+
+            if (exchangeData.length && playbackStartMs) {
+                let t = timelineState(nowMs);
+                if (t.isComplete) { startPlayback(); t = timelineState(nowMs); }
+
+                const index = t.inIntro ? 0 : t.inOutro ? exchangeData.length - 1 : getDataIndexFromProgress(t.progress);
+                currentDayIndex = index;
+                const mapped = getMappedAnxiety(index);
+                targetAnxiety = t.inIntro ? 0 : mapped.anxiety;
+                currentAnxiety += (targetAnxiety - currentAnxiety) * (targetAnxiety > currentAnxiety ? 0.03 : 0.01);
+
+                // fog + point material respond to stress
+                const endish = t.inOutro ? 1 : 0;
+                scene.fog.density = 0.04 + 0.056 * endish;
+                if (points && points.material) {
+                    const recog = 1 - THREE.MathUtils.clamp(currentAnxiety / RECOGNITION_HOLD_ANXIETY, 0, 1);
+                    points.material.size = POINT_SIZE + recog * 0.0012;
+                    points.material.opacity = POINT_OPACITY + recog * 0.10;
+                }
+
+                deform(t.progress, nowMs);
+
+                // HUD (desktop only; not visible in immersive VR)
+                if (!inXR()) {
+                    if (t.inIntro) { hudDate.textContent = 'SYSTEM STANDBY'; hudRate.textContent = '--'; }
+                    else {
+                        const d = exchangeData[index];
+                        hudDate.textContent = d.date;
+                        hudRate.textContent = '£1 = ¥' + d.rate.toFixed(2);
+                    }
+                    hudStress.textContent = 'STRESS ' + (currentAnxiety * 100).toFixed(0) + '%' + (currentAnxiety > 0.7 ? '  COMPROMISED' : '');
+                }
+            }
+
+            if (inXR()) updateLocomotion(dt);
+            else controls.update();
+            renderer.render(scene, camera);
+        }
+
+        renderer.setAnimationLoop(animate);
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>

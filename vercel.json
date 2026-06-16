@@ -1,0 +1,5 @@
+{
+  "rewrites": [
+    { "source": "/vr", "destination": "/index-vr.html" }
+  ]
+}

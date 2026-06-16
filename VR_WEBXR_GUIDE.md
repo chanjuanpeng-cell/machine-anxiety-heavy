@@ -164,7 +164,7 @@ Vercel 会自动重新构建那个 Preview，**网址不变**，约一分钟后�
 ## 已知限制 / 待办
 
 - **无声音**：生成式音频系统尚未移植（首版刻意去掉，先把帧率单独测干净）。
-  下一步可移植 Web Audio，并改成空间化（PannerNode）。
+  详细移植方案见下方「声音移植方案（下一步）」。
 - **无后处理**：Bloom / RGB glitch 等视觉语言在 VR 里暂缺，需 shader 层重写才能上。
 - **房间静止**：VR 里不让房间整体旋转，避免眩晕。
 - **性能旋钮顺序**（掉帧时依次尝试）：`deformSlices` 调大 → `pointKeepRatio` 调小 →
@@ -172,4 +172,49 @@ Vercel 会自动重新构建那个 Preview，**网址不变**，约一分钟后�
 
 ---
 
+## 声音移植方案（下一步）
+
+目标：把桌面版的生成式音频搬进 VR，并做**真 3D 空间化**——让声音从房间里的具体位置传来，
+随头显转动而改变方位，强化「站进房间」的沉浸感。
+
+### 桌面版音频系统长什么样（在 `index.html` 里）
+
+| 部件 | 位置 | 作用 |
+|------|------|------|
+| `initSoundSystem()` | 约 L976 | 搭建 Web Audio 图：`masterOutput`(gain) → `compressorNode` → `destination` |
+| 四层声源 | L990–L1032 | 机器音 `oscillator`+`subOscillator`(子低频)、房间噪声 `roomNoiseSource`、事件噪声 `eventNoiseSource`、空气噪声 `airNoiseSource`；每层各带 gain + biquad 滤波 + **`StereoPanner`** |
+| `createNoiseBuffer()` | 约 L966 | 生成循环噪声缓冲 |
+| `updateDataDrivenSound(now,endFade,accum)` | 约 L1490 | **每帧**读 `currentSoundMapping`(anxiety/deviation/velocity/shock/movement) 驱动各层增益/频率/滤波；含「累积张力→屋顶坍塌时音频高潮」逻辑 |
+| 开关 | `soundEnabled` / `isAudioInitialized` | 须在用户手势后 `audioCtx.resume()`（浏览器自动播放限制） |
+
+> VR 版已经复用了数据引擎，`currentSoundMapping` 在 VR 里同样可算出来，所以音频逻辑能直接对接。
+
+### 移植步骤
+
+1. **搬骨架**：把 `createNoiseBuffer()`、`initSoundSystem()`、`updateDataDrivenSound()` 三个函数
+   搬进 `index-vr.html`，去掉桌面专用的部分（`buildAudioMixer` 调试 UI、`startAudioRecording`/CCapture 录音——这些 VR 用不到）。
+2. **2D→3D 换 panner**：把每层的 `createStereoPanner()` 换成 `audioCtx.createPanner()`
+   （`panningModel='HRTF'`, `distanceModel='inverse'`），给每个声源一个房间内的世界坐标
+   （`panner.positionX/Y/Z`）。机器音可锚在某件物体上，空气/房间噪声可设为近似环境声（距离衰减小或直接走非空间化的 ambient 层）。
+3. **听者绑头显**：每帧用 `renderer.xr.getCamera()` 取头显位姿，写入 `audioCtx.listener`
+   的 `positionX/Y/Z` 与 `forwardX/Y/Z`+`upX/Y/Z`（朝向向量由相机四元数算）。这样转头时方位感才正确。
+4. **手势启动**：WebXR 里在「Enter VR」或首次扣扳机时 `audioCtx.resume()`，绕过自动播放限制
+   （`VRButton` 的 sessionstart 回调里做最稳）。
+5. **每帧调用**：在 `setAnimationLoop` 里调 `updateDataDrivenSound(...)` + 更新 listener 位姿。
+   音频跑在 Web Audio 自己的线程，几乎不吃主线程；**不要**和 `deformSlices` 抢预算即可，掉帧不影响声音。
+
+### 坑预警
+
+- **方位反了/不动**：多半是 listener 的 forward/up 向量没用相机四元数正确算，或没每帧更新。
+- **没声音**：八成是没在用户手势里 `resume()`，或 Quest 把音量/音频会话停了。
+- **太吵/糊**：HRTF + 多层噪声在头显里比桌面更闷，`masterOutput` 增益和各层滤波截止频率要重新调一遍。
+- **性能**：纯 Web Audio 开销极小；真要省，先降的是视觉旋钮（见上方性能顺序），不是音频。
+
+### 验收
+
+进 VR 后：能听到声音随汇率压力变化、屋顶坍塌时有高潮；**转头时声音方位跟着变**；帧率不掉。
+
+---
+
 *记录于 VR 原型第二版：分片形变 + 手柄走动。后续如有大改请同步更新本文件。*
+*声音移植方案补于 2026-06-16，尚未实现。*
